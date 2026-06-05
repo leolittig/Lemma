@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+mlx-vlm
+mlx
+huggingface-hub
+aiofiles

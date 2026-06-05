@@ -1,0 +1,38 @@
+# Python
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+.eslintcache
+
+# Environment / Local Configs
+.env
+.env.local
+.env.*.local
+
+# OS / Editor Caches & Configs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Tooling Caches
+.claude/
+.gemini/
