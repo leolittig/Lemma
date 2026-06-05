@@ -54,6 +54,12 @@ body {
   color: #002955;
 }
 
+/* Dimmed trailing words of the model name (from the first word ending in 'b').
+   Sets its own colour so it stays grey even when the title is hovered. */
+.model-name-dim {
+  color: #b0b4ba;
+}
+
 .model-tooltip {
   visibility: hidden;
   opacity: 0;
@@ -83,14 +89,41 @@ body {
 #messages {
   flex: 1;
   overflow-y: auto;
+  /* Always reserve room for the scrollbar so the layout doesn't shift sideways
+     when it appears. `both-edges` keeps the reserved space symmetric so the
+     centered content stays centered. */
+  scrollbar-gutter: stable both-edges;
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
   padding-top: 1.5rem;
-  padding-bottom: 1.5rem;
+  padding-bottom: 2.5rem;
   padding-left: max(2rem, calc((100% - 980px) / 2));
   padding-right: max(2rem, calc((100% - 980px) / 2));
   box-sizing: border-box;
+}
+
+/* Holds the scroll area plus its bottom fade overlay. */
+.messages-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Soft fade-out at the bottom edge so messages dissolve into the background
+   instead of ending on a hard cut. It's an overlay (not a mask on #messages)
+   so it can stop short of the scrollbar: --scrollbar-width is measured in JS
+   and inset on the right so the fade never paints over the scrollbar. */
+.messages-fade {
+  position: absolute;
+  left: 0;
+  right: var(--scrollbar-width, 0px);
+  bottom: 0;
+  height: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(248, 249, 250, 0) 0%, #f8f9fa 100%);
 }
 
 #messages > div:first-child {
@@ -99,31 +132,78 @@ body {
 
 #messages > div {
   position: relative;
+  /* Force a stacking context so the negative-z-index ::before/::after that paint
+     the bubble colour stay contained behind it. Without this they escape once
+     the entrance animation (which created a stacking context via transform)
+     finishes and reverts, leaving the bubble looking white. */
+  isolation: isolate;
   padding: 0.95rem 1.45rem;
   max-width: 80%;
   border-radius: 1.5rem;
   line-height: 1.6;
   word-wrap: break-word;
   font-size: 1.05rem;
-  opacity: 0;
-  animation: messageFadeIn 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Resting state. The entrance animation uses `backwards` fill to show its
+     hidden start state before it runs, then reverts here when it finishes, so
+     no lingering `forwards` fill pins transform — leaving it free for the FLIP
+     reflow animation in App.jsx. */
+  opacity: 1;
+  transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .word-fade {
   display: inline-block;
   opacity: 0;
-  animation: wordFadeIn 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: wordFadeIn 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes messageFadeIn {
+@keyframes userMessageFadeIn {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translate(260px, var(--random-y, 0px)) scale(4);
+    filter: blur(20px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* The shadow fades in on its own timeline (ease-in) so it isn't yanked to full
+   by the front-loaded curve of the main animation while the bubble is still
+   scaled up — which would blow the shadow up and spill it toward the input.
+   ease-in keeps it near zero during the brief scaled phase, then fades it in
+   smoothly as part of the entrance. */
+@keyframes userShadowFadeIn {
+  from {
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  to {
+    box-shadow: -5px 15px 30px rgba(0, 0, 0, 0.1);
+  }
+}
+
+@keyframes assistantMessageFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-260px, var(--random-y, 0px)) scale(4);
+    filter: blur(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Shadow on its own ease-in timeline (see userShadowFadeIn). */
+@keyframes assistantShadowFadeIn {
+  from {
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  to {
+    box-shadow: 5px 10px 20px rgba(0, 0, 0, 0.05);
   }
 }
 
@@ -167,6 +247,9 @@ body {
   background-color: rgba(255, 255, 255, 0.357);
   color: #0d1e3d;
   align-self: flex-end;
+  transform-origin: right bottom;
+  animation: userMessageFadeIn 2.2s cubic-bezier(0.05, 0.95, 0.1, 1) backwards,
+             userShadowFadeIn 2.2s ease-in backwards;
 }
 
 .user::before {
@@ -182,6 +265,9 @@ body {
   box-shadow: 5px 10px 20px rgba(0, 0, 0, 0.05);
   color: #1c1c1e;
   align-self: flex-start;
+  transform-origin: left bottom;
+  animation: assistantMessageFadeIn 2.2s cubic-bezier(0.05, 0.95, 0.1, 1) backwards,
+             assistantShadowFadeIn 2.2s ease-in backwards;
 }
 
 .assistant::before {
@@ -220,6 +306,62 @@ body {
 
 #messages > div li {
   margin-bottom: 0.35rem;
+}
+
+/* Table Styles */
+#messages > div table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+}
+
+#messages > div th {
+  background-color: rgba(0, 0, 0, 0.03);
+  color: #1a1a1a;
+  font-weight: 600;
+  padding: 0.8rem 1rem;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+}
+
+#messages > div td {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  color: #2c2c2e;
+}
+
+#messages > div tr:last-child td {
+  border-bottom: none;
+}
+
+#messages > div tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.015);
+}
+
+#messages > div tr:hover {
+  background-color: rgba(0, 122, 255, 0.02);
+}
+
+/* Streaming Table Container for horizontal scrolling */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.table-container table {
+  margin: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
 }
 
 /* Input Form Area */
@@ -347,7 +489,7 @@ button.settings-btn:active {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s;
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.6s;
 }
 
 .settings-overlay.visible {
@@ -370,7 +512,7 @@ button.settings-btn:active {
   
   opacity: 0;
   transform: scale(0.96) translateY(8px);
-  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .settings-overlay.visible .settings-modal {
@@ -478,6 +620,19 @@ button.settings-action-btn:active {
   transform: translateY(1px) scale(0.98) !important;
 }
 
+/* Secondary (neutral) variant — used for "Reload Model" alongside the primary
+   "Restart Chat" so the two actions have a clear visual hierarchy. */
+button.settings-action-btn.secondary {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #1a1a1a !important;
+  box-shadow: none !important;
+}
+
+button.settings-action-btn.secondary:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: none !important;
+}
+
 /* Model Picker Styles */
 .model-selector-wrapper {
   position: relative;
@@ -538,7 +693,7 @@ button.model-picker-toggle.active .chevron-icon {
   gap: 0.25rem;
   min-width: 240px;
   max-width: 360px;
-  animation: dropdownFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: dropdownFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes dropdownFadeIn {

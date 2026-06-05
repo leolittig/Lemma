@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import katex from 'katex';
@@ -9,14 +9,23 @@ marked.use(markedKatex({
   throwOnError: false
 }));
 
-// Helper to format the model name according to rules
-const formatModelName = (name) => {
-  if (!name) return '';
+// Render the model name for the app bar. Each '-' separated word is normally
+// capitalised, but once a word ends with the letter 'b' (case insensitive) that
+// word and every word after it are dimmed and left in their original casing.
+const renderModelName = (name) => {
+  if (!name) return null;
   const baseName = name.split('/').pop() || name;
   const parts = baseName.split('-');
-  return parts
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  let dim = false;
+  return parts.map((word, i) => {
+    if (!dim && /b$/i.test(word)) dim = true;
+    const text = dim ? word : word.charAt(0).toUpperCase() + word.slice(1);
+    return (
+      <span key={i} className={dim ? 'model-name-dim' : undefined}>
+        {text}{i < parts.length - 1 ? ' ' : ''}
+      </span>
+    );
+  });
 };
 
 // Helper to decode HTML entities created by marked
@@ -77,6 +86,28 @@ const renderToken = (token, keyPath) => {
       return <br key={keyPath} />;
     case 'space':
       return null;
+    case 'hr':
+      return <hr key={keyPath} />;
+    case 'blockquote':
+      return <blockquote key={keyPath}>{renderTokens(token.tokens, `${keyPath}-bq`)}</blockquote>;
+    case 'link':
+      return (
+        <a
+          key={keyPath}
+          href={token.href}
+          title={token.title || undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {renderTokens(token.tokens, `${keyPath}-a`)}
+        </a>
+      );
+    case 'image':
+      return <img key={keyPath} src={token.href} alt={token.text} title={token.title || undefined} />;
+    case 'del':
+      return <del key={keyPath}>{renderTokens(token.tokens, `${keyPath}-del`)}</del>;
+    case 'escape':
+      return <span key={keyPath}>{decodeEntities(token.text)}</span>;
     case 'inlineMath':
       return (
         <span
@@ -94,6 +125,41 @@ const renderToken = (token, keyPath) => {
             __html: katex.renderToString(token.text, { displayMode: true, throwOnError: false })
           }}
         />
+      );
+    case 'table':
+      return (
+        <div key={keyPath} className="table-container">
+          <table>
+            <thead>
+              <tr>
+                {token.header.map((cell, colIndex) => {
+                  const align = token.align[colIndex];
+                  const style = align ? { textAlign: align } : {};
+                  return (
+                    <th key={`${keyPath}-th-${colIndex}`} style={style}>
+                      {cell.tokens ? renderTokens(cell.tokens, `${keyPath}-th-${colIndex}-c`) : cell.text}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {token.rows.map((row, rowIndex) => (
+                <tr key={`${keyPath}-tr-${rowIndex}`}>
+                  {row.map((cell, colIndex) => {
+                    const align = token.align[colIndex];
+                    const style = align ? { textAlign: align } : {};
+                    return (
+                      <td key={`${keyPath}-td-${rowIndex}-${colIndex}`} style={style}>
+                        {cell.tokens ? renderTokens(cell.tokens, `${keyPath}-td-${rowIndex}-${colIndex}-c`) : cell.text}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
     case 'text':
       if (token.tokens) {
@@ -133,6 +199,7 @@ export default function App() {
   const [modelName, setModelName] = useState('mlx-community/gemma-4-12B-it-8bit');
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const abortControllerRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem('system_prompt') || '');
   const settingsTextareaRef = useRef(null);
@@ -294,7 +361,7 @@ export default function App() {
       const res = await fetch('/model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedModel }),
+        body: JSON.stringify({ model: selectedModel, system_prompt: systemPrompt }),
       });
       if (res.ok) {
         setModelName(selectedModel);
@@ -379,34 +446,164 @@ export default function App() {
     adjustTextareaHeight(textareaRef.current);
   }, [inputText]);
 
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  // Auto-scroll lock: the view stays pinned to the newest message, easing
+  // toward the bottom with a slow, smooth animation that keeps up with both new
+  // messages and streaming tokens. It disengages the moment the user scrolls up
+  // to read older messages, and re-engages once they scroll all the way back
+  // down to the bottom.
   const messagesContainerRef = useRef(null);
+  const isLockedRef = useRef(true);
+  const scrollRafRef = useRef(null);
 
-  const scrollToBottom = (behavior = 'auto') => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: behavior
-      });
-    } else {
-      messagesEndRef.current?.scrollIntoView({ behavior });
+  // Per-frame catch-up fraction. Lower = slower and smoother. A far-behind
+  // jump uses a larger factor so the newest content never drops out of view.
+  const SCROLL_EASE = 0.085;
+  const SCROLL_EASE_FAR = 0.25;
+  const BOTTOM_THRESHOLD = 15;
+
+  const stopScrollAnimation = () => {
+    if (scrollRafRef.current != null) {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
     }
   };
 
+  const animateScrollToBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container || !isLockedRef.current) {
+      scrollRafRef.current = null;
+      return;
+    }
+
+    const target = container.scrollHeight - container.clientHeight;
+    const distance = target - container.scrollTop;
+
+    // Close enough — settle exactly on the bottom and idle until new content.
+    if (Math.abs(distance) < 0.5) {
+      container.scrollTop = target;
+      scrollRafRef.current = null;
+      return;
+    }
+
+    const factor = distance > container.clientHeight ? SCROLL_EASE_FAR : SCROLL_EASE;
+    container.scrollTop = container.scrollTop + distance * factor;
+    scrollRafRef.current = requestAnimationFrame(animateScrollToBottom);
+  };
+
+  const ensureScrollAnimation = () => {
+    if (isLockedRef.current && scrollRafRef.current == null) {
+      scrollRafRef.current = requestAnimationFrame(animateScrollToBottom);
+    }
+  };
+
+  const isAtBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop - container.clientHeight <= BOTTOM_THRESHOLD;
+  };
+
+  // Programmatic scrolling never fires wheel/touch events, so these handlers
+  // only ever see genuine user gestures — a reliable way to break the lock.
+  const handleWheel = (e) => {
+    if (e.deltaY < 0 && isLockedRef.current) {
+      isLockedRef.current = false;
+      stopScrollAnimation();
+    }
+  };
+
+  const handleTouchMove = () => {
+    if (isLockedRef.current && !isAtBottom()) {
+      isLockedRef.current = false;
+      stopScrollAnimation();
+    }
+  };
+
+  // Re-engage the lock the instant the user returns to the very bottom.
   const handleScroll = () => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    const threshold = 15;
-    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
-    setShouldAutoScroll((prev) => (prev !== atBottom ? atBottom : prev));
+    if (!isLockedRef.current && isAtBottom()) {
+      isLockedRef.current = true;
+      ensureScrollAnimation();
+    }
   };
 
+  // Follow new messages and streaming tokens while the lock is engaged.
   useEffect(() => {
-    if (shouldAutoScroll) {
-      scrollToBottom(isResponding ? 'auto' : 'smooth');
+    ensureScrollAnimation();
+  }, [history]);
+
+  // Clean up the animation frame on unmount.
+  useEffect(() => stopScrollAnimation, []);
+
+  // Measure the OS scrollbar width once and expose it as a CSS variable, so the
+  // bottom fade overlay can inset its right edge to avoid painting over the
+  // scrollbar. (Returns 0 for overlay-style scrollbars, which is correct.)
+  useEffect(() => {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;overflow:scroll;width:100px;height:100px;';
+    document.body.appendChild(probe);
+    const width = probe.offsetWidth - probe.clientWidth;
+    document.body.removeChild(probe);
+    document.documentElement.style.setProperty('--scrollbar-width', `${width}px`);
+  }, []);
+
+  // FLIP reflow: before the list is long enough to scroll, the container is
+  // bottom-anchored, so appending a message shoves the existing bubbles upward
+  // in a single instant jump. We record each bubble's position before the new
+  // one lands and animate it from its old spot to its new spot, so the whole
+  // stack slides up smoothly instead of snapping. (Once the list overflows, the
+  // scroll loop preserves viewport positions, so deltas are ~0 and this no-ops.)
+  const messageRefs = useRef(new Map());
+  const prevTopsRef = useRef(new Map());
+  const prevMsgCountRef = useRef(0);
+
+  const registerMessageRef = (key) => (el) => {
+    if (el) messageRefs.current.set(key, el);
+    else messageRefs.current.delete(key);
+  };
+
+  useLayoutEffect(() => {
+    const grew = history.length > prevMsgCountRef.current;
+    const newTops = new Map();
+    messageRefs.current.forEach((el, key) => {
+      // Measure with offsetTop (pure layout position) rather than
+      // getBoundingClientRect: the latter is viewport-relative, so it folds in
+      // the scroll position and any in-flight `translate` from an ongoing
+      // animation. Both corrupt the stored "previous position" and make the
+      // next send compute a wrong delta — which showed up as bubbles dipping
+      // down a frame before sliding up. offsetTop ignores scroll and transforms.
+      if (el && el.isConnected) newTops.set(key, el.offsetTop);
+    });
+
+    if (grew) {
+      newTops.forEach((newTop, key) => {
+        const prevTop = prevTopsRef.current.get(key);
+        if (prevTop === undefined) return; // the brand-new bubble — let it fly in
+        const dy = prevTop - newTop;
+        if (Math.abs(dy) < 0.5) return; // didn't actually move (e.g. overflowing)
+
+        const el = messageRefs.current.get(key);
+        if (!el) return;
+        // Use the independent `translate` property (not `transform`): a bubble
+        // that's still mid-entrance has its `transform` owned by the keyframe
+        // animation, which would override an inline `transform`. `translate`
+        // composes on top of `transform`, so the FLIP shift applies even while
+        // the bubble is flying in (e.g. the just-sent message when the assistant
+        // placeholder lands a moment later).
+        // Invert: jump it back to where it was, with no transition...
+        el.style.transition = 'none';
+        el.style.translate = `0 ${dy}px`;
+        void el.offsetHeight; // force the inverted position to take hold
+        // ...then play: release it to its new position over a slow ease.
+        requestAnimationFrame(() => {
+          el.style.transition = 'translate 0.7s cubic-bezier(0.16, 1, 0.3, 1)';
+          el.style.translate = '0 0';
+        });
+      });
     }
-  }, [history, shouldAutoScroll]);
+
+    prevTopsRef.current = newTops;
+    prevMsgCountRef.current = history.length;
+  }, [history]);
 
   const handleRestart = async () => {
     try {
@@ -425,6 +622,31 @@ export default function App() {
     }
   };
 
+  // Re-load the currently active model. Unlike handleModelSelect this doesn't
+  // bail when the target equals the current model, so it forces a fresh load,
+  // applying the current system prompt and resetting the conversation.
+  const handleReloadModel = async () => {
+    if (isChangingModel) return;
+    setIsChangingModel(true);
+    setShowSettings(false);
+    try {
+      const res = await fetch('/model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelName, system_prompt: systemPrompt }),
+      });
+      if (res.ok) {
+        localStorage.setItem('system_prompt', systemPrompt);
+        setHistory([]);
+        setIsResponding(false);
+      }
+    } catch (err) {
+      console.error('Error reloading model:', err);
+    } finally {
+      setIsChangingModel(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const text = inputText.trim();
@@ -432,14 +654,19 @@ export default function App() {
 
     setInputText('');
     setHistory((prev) => [...prev, { role: 'user', text }]);
-    setShouldAutoScroll(true);
+    isLockedRef.current = true;
+    ensureScrollAnimation();
     setIsResponding(true);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       const res = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -468,10 +695,20 @@ export default function App() {
         });
       }
     } catch (error) {
-      console.error('Error fetching chat response:', error);
+      // Aborting via the stop button is expected — keep whatever streamed so far.
+      if (error.name !== 'AbortError') {
+        console.error('Error fetching chat response:', error);
+      }
     } finally {
+      abortControllerRef.current = null;
       setIsResponding(false);
     }
+  };
+
+  // Stop the in-flight response: aborts the streaming fetch, which ends the
+  // read loop and settles isResponding in handleSubmit's finally block.
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
   };
 
   const handleKeyDown = (e) => {
@@ -501,7 +738,7 @@ export default function App() {
             </svg>
           </button>
           <span className="model-title-container">
-            <span className="model-title">{formatModelName(modelName)}</span>
+            <span className="model-title">{renderModelName(modelName)}</span>
             <span className="model-tooltip">{modelName}</span>
           </span>
           {showModelPicker && (
@@ -584,15 +821,26 @@ export default function App() {
           </svg>
         </button>
       </header>
-      <div id="messages" ref={messagesContainerRef} onScroll={handleScroll}>
+      <div className="messages-area">
+      <div
+        id="messages"
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        onWheel={handleWheel}
+        onTouchMove={handleTouchMove}
+      >
         {history.map((msg, index) => {
           const isLast = index === history.length - 1;
           const isStreaming = isLast && msg.role === 'assistant' && isResponding;
 
+          // Deterministic random vertical offset based on index (between -40px and +40px)
+          const randomY = Math.floor((Math.sin(index * 12.9898) * 0.5 + 0.5) * 80) - 40;
+          const inlineStyle = { '--random-y': `${randomY}px` };
+
           if (isStreaming) {
             const tokens = marked.lexer(msg.text);
             return (
-              <div key={index} className="assistant">
+              <div key={index} ref={registerMessageRef(index)} className="assistant" style={inlineStyle}>
                 {renderTokens(tokens, `msg-${index}`)}
               </div>
             );
@@ -601,12 +849,16 @@ export default function App() {
           return (
             <div
               key={index}
+              ref={registerMessageRef(index)}
               className={msg.role}
+              style={inlineStyle}
               dangerouslySetInnerHTML={{ __html: marked.parse(msg.text) }}
             />
           );
         })}
         <div ref={messagesEndRef} />
+      </div>
+        <div className="messages-fade" aria-hidden="true" />
       </div>
       <form onSubmit={handleSubmit}>
         <textarea
@@ -619,11 +871,21 @@ export default function App() {
           onKeyDown={handleKeyDown}
           rows={1}
         />
-        <button type="submit" disabled={isResponding}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-            <polyline points="12 5 19 12 12 19"></polyline>
-          </svg>
+        <button
+          type={isResponding ? 'button' : 'submit'}
+          onClick={isResponding ? handleStop : undefined}
+          aria-label={isResponding ? 'Stop generating' : 'Send message'}
+        >
+          {isResponding ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <rect x="6" y="6" width="12" height="12" rx="2.5"></rect>
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          )}
         </button>
       </form>
 
@@ -657,6 +919,9 @@ export default function App() {
               />
             </div>
             <div className="settings-actions">
+              <button className="settings-action-btn secondary" onClick={handleReloadModel}>
+                Reload Model
+              </button>
               <button className="settings-action-btn" onClick={handleRestart}>
                 Restart Chat
               </button>

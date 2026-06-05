@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from pathlib import Path
+from typing import Optional
 import threading
 import gc
 import mlx.core as mx
@@ -41,13 +42,38 @@ def list_cached_models():
         models.append(current_default)
     return sorted(models)
 
+SYSTEM_PROMPT_FILE = Path("system_prompt.txt")
+
+def save_system_prompt(sys_prompt: str):
+    """Persist the system prompt to disk (or remove it when empty)."""
+    if sys_prompt:
+        try:
+            SYSTEM_PROMPT_FILE.write_text(sys_prompt, encoding="utf-8")
+        except Exception as e:
+            print(f"Error saving system prompt: {e}")
+    elif SYSTEM_PROMPT_FILE.exists():
+        try:
+            SYSTEM_PROMPT_FILE.unlink()
+        except Exception as e:
+            print(f"Error removing system prompt file: {e}")
+
+def get_initial_history():
+    if SYSTEM_PROMPT_FILE.exists():
+        try:
+            sys_prompt = SYSTEM_PROMPT_FILE.read_text(encoding="utf-8").strip()
+            if sys_prompt:
+                return [{"role": "system", "content": sys_prompt}]
+        except Exception as e:
+            print(f"Error loading system prompt: {e}")
+    return []
+
 # Initialize with the last available model or default
 available_models = list_cached_models()
 current_model_path = available_models[-1] if available_models else "mlx-community/gemma-4-e4b-it-4bit"
 
 print(f"Loading initial model: {current_model_path}")
 model, processor = load(current_model_path)
-history = []
+history = get_initial_history()
 app = FastAPI()
 
 download_status = {}
@@ -170,6 +196,7 @@ class RestartConfig(BaseModel):
 
 class ModelSelect(BaseModel):
     model: str
+    system_prompt: Optional[str] = None
 
 class DownloadRequest(BaseModel):
     model: str
@@ -192,7 +219,11 @@ async def select_model(sel: ModelSelect):
         print(f"Loading new model: {sel.model}")
         model, processor = load(sel.model)
         current_model_path = sel.model
-        history = []  # Reset chat history when switching models
+        # Apply the system prompt from settings (if the client sent one) so the
+        # new model always receives it; then reset chat history with it applied.
+        if sel.system_prompt is not None:
+            save_system_prompt(sel.system_prompt)
+        history = get_initial_history()
         return {"status": "ok", "model": sel.model}
     except Exception as e:
         print(f"Error loading model {sel.model}: {e}")
@@ -266,9 +297,8 @@ async def chat(msg: Msg):
 @app.post("/restart")
 def restart_chat(config: RestartConfig):
     global history
-    history = []
-    if config.system_prompt:
-        history.append({"role": "system", "content": config.system_prompt})
+    save_system_prompt(config.system_prompt)
+    history = get_initial_history()
     return {"status": "ok"}
 
 

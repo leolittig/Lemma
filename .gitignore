@@ -22,6 +22,9 @@ dist/
 .env.local
 .env.*.local
 
+# Local app state (user's saved system prompt, written at runtime)
+system_prompt.txt
+
 # OS / Editor Caches & Configs
 .DS_Store
 Thumbs.db
