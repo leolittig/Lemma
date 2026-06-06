@@ -192,6 +192,12 @@ const adjustTextareaHeight = (textarea) => {
   }
 };
 
+// Discrete context-window options (tokens). The slider snaps to these by index;
+// the default is the middle step. Doubling each step keeps the low end (where
+// most useful values live) as well-spaced as the high end.
+const CTX_STEPS = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
+const CTX_DEFAULT_INDEX = Math.floor(CTX_STEPS.length / 2); // 4 → 8192
+
 export default function App() {
   const [history, setHistory] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -199,9 +205,19 @@ export default function App() {
   const [modelName, setModelName] = useState('mlx-community/gemma-4-12B-it-8bit');
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
-  const abortControllerRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem('system_prompt') || '');
+  // Generation params sent with each /chat message. Persisted to localStorage so
+  // they survive reloads. Temperature defaults to 1.0; context window is a string
+  // ('' = unlimited) so the field can be cleared.
+  const [temperature, setTemperature] = useState(() => {
+    const saved = localStorage.getItem('temperature');
+    return saved !== null ? parseFloat(saved) : 1.0;
+  });
+  const [contextSize, setContextSize] = useState(() => {
+    const saved = localStorage.getItem('context_size');
+    return saved !== null ? saved : String(CTX_STEPS[CTX_DEFAULT_INDEX]);
+  });
   const settingsTextareaRef = useRef(null);
   const overlayMouseDownRef = useRef(false);
 
@@ -243,6 +259,17 @@ export default function App() {
     }, 50);
     return () => clearTimeout(timer);
   }, [systemPrompt, showSettings]);
+
+  // Persist generation params live so they survive reloads and apply to the
+  // next message without needing a restart.
+  useEffect(() => {
+    localStorage.setItem('temperature', String(temperature));
+  }, [temperature]);
+
+  useEffect(() => {
+    if (contextSize === '') localStorage.removeItem('context_size');
+    else localStorage.setItem('context_size', contextSize);
+  }, [contextSize]);
 
   // Fetch active model and available models list on mount with auto-retry if backend is starting up
   useEffect(() => {
@@ -658,15 +685,17 @@ export default function App() {
     ensureScrollAnimation();
     setIsResponding(true);
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
     try {
+      const parsedContext = parseInt(contextSize, 10);
       const res = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-        signal: controller.signal,
+        body: JSON.stringify({
+          text,
+          temperature,
+          // '' or non-numeric => null, i.e. unlimited context window.
+          max_kv_size: Number.isFinite(parsedContext) && parsedContext > 0 ? parsedContext : null,
+        }),
       });
 
       if (!res.ok) {
@@ -695,20 +724,10 @@ export default function App() {
         });
       }
     } catch (error) {
-      // Aborting via the stop button is expected — keep whatever streamed so far.
-      if (error.name !== 'AbortError') {
-        console.error('Error fetching chat response:', error);
-      }
+      console.error('Error fetching chat response:', error);
     } finally {
-      abortControllerRef.current = null;
       setIsResponding(false);
     }
-  };
-
-  // Stop the in-flight response: aborts the streaming fetch, which ends the
-  // read loop and settles isResponding in handleSubmit's finally block.
-  const handleStop = () => {
-    abortControllerRef.current?.abort();
   };
 
   const handleKeyDown = (e) => {
@@ -722,6 +741,12 @@ export default function App() {
       }
     }
   };
+
+  // Derive the context-window slider position (an index into CTX_STEPS) from the
+  // saved token count, falling back to the middle step for anything unrecognised.
+  const ctxIndexRaw = CTX_STEPS.indexOf(parseInt(contextSize, 10));
+  const ctxIndex = ctxIndexRaw === -1 ? CTX_DEFAULT_INDEX : ctxIndexRaw;
+  const ctxTokens = CTX_STEPS[ctxIndex];
 
   return (
     <div className="app-container">
@@ -871,21 +896,11 @@ export default function App() {
           onKeyDown={handleKeyDown}
           rows={1}
         />
-        <button
-          type={isResponding ? 'button' : 'submit'}
-          onClick={isResponding ? handleStop : undefined}
-          aria-label={isResponding ? 'Stop generating' : 'Send message'}
-        >
-          {isResponding ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <rect x="6" y="6" width="12" height="12" rx="2.5"></rect>
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-              <polyline points="12 5 19 12 12 19"></polyline>
-            </svg>
-          )}
+        <button type="submit" disabled={isResponding}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
         </button>
       </form>
 
@@ -906,7 +921,7 @@ export default function App() {
           </div>
           <div className="settings-body">
             <div className="settings-field">
-              <label className="settings-label">Identity</label>
+              <label className="settings-label">Instructions</label>
               <textarea
                 ref={settingsTextareaRef}
                 className="settings-textarea"
@@ -917,6 +932,54 @@ export default function App() {
                 }}
                 rows={1}
               />
+            </div>
+            <div className="settings-field">
+              <div className="settings-label-row">
+                <label className="settings-label">Temperature</label>
+                <span className="settings-value">{temperature.toFixed(2)}</span>
+              </div>
+              <div className="slider-wrap">
+                <div className="slider-track" />
+                <div className="slider-ticks" aria-hidden="true">
+                  <span className="slider-tick" style={{ left: '50%' }} />
+                </div>
+                <input
+                  type="range"
+                  className="settings-slider"
+                  min="0"
+                  max="2"
+                  step="0.05"
+                  value={temperature}
+                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                />
+              </div>
+            </div>
+            <div className="settings-field">
+              <div className="settings-label-row">
+                <label className="settings-label">Context Window</label>
+                <span className="settings-value">{ctxTokens.toLocaleString()} tokens</span>
+              </div>
+              <div className="slider-wrap">
+                <div className="slider-track" />
+                <div className="slider-ticks" aria-hidden="true">
+                  {CTX_STEPS.map((_, i) => (
+                    <span
+                      key={i}
+                      className="slider-tick"
+                      style={{ left: `${(i / (CTX_STEPS.length - 1)) * 100}%` }}
+                    />
+                  ))}
+                </div>
+                <input
+                  type="range"
+                  className="settings-slider"
+                  min="0"
+                  max={CTX_STEPS.length - 1}
+                  step="1"
+                  value={ctxIndex}
+                  onChange={(e) => setContextSize(String(CTX_STEPS[parseInt(e.target.value, 10)]))}
+                />
+              </div>
             </div>
             <div className="settings-actions">
               <button className="settings-action-btn secondary" onClick={handleReloadModel}>
@@ -944,7 +1007,7 @@ export default function App() {
         >
           <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
             <div className="settings-header">
-              <h3 className="settings-title">Add Hugging Face Model</h3>
+              <h3 className="settings-title">Add Model</h3>
               <button className="close-btn" onClick={() => setShowAddModel(false)} aria-label="Close">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -954,11 +1017,11 @@ export default function App() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.5rem', width: '100%', boxSizing: 'border-box' }}>
               <div className="settings-field" style={{ margin: '0' }}>
-                <label className="settings-label">Hugging Face Repository ID</label>
+                <label className="settings-label">Hugging Face Repo ID</label>
                 <div style={{ display: 'flex', gap: '0.75rem', width: '100%', alignItems: 'center' }}>
                   <input
                     type="text"
-                    placeholder="e.g., mlx-community/gemma-4-e4b-it-4bit"
+                    placeholder="e.g.: mlx-community/model"
                     value={newModelRepo}
                     onChange={(e) => setNewModelRepo(e.target.value)}
                     onKeyDown={(e) => {
@@ -969,7 +1032,7 @@ export default function App() {
                     style={{
                       flex: 1,
                       padding: '0.75rem 1.1rem',
-                      borderRadius: '0.8rem',
+                      borderRadius: '10rem',
                       border: '1px solid rgba(0, 0, 0, 0.12)',
                       fontSize: '1rem',
                       fontFamily: 'inherit',
@@ -985,11 +1048,12 @@ export default function App() {
                     style={{
                       width: 'auto',
                       height: 'auto',
-                      borderRadius: '2rem',
-                      padding: '0.75rem 1.4rem',
-                      fontSize: '0.95rem',
-                      fontWeight: '600',
-                      flexShrink: 0
+                      borderRadius: '10rem',
+                      padding: '0.75rem 1.1rem',
+                      fontSize: '1rem',
+                      fontWeight: '400',
+                      flexShrink: 0,
+                      boxSizing: 'border-box'
                     }}
                   >
                     Download

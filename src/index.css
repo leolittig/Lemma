@@ -20,6 +20,7 @@ body {
   display: flex;
   flex-direction: column;
   background-color: #f8f9fa;
+  position: relative;
 }
 
 /* Top Bar Styling */
@@ -32,7 +33,12 @@ body {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  z-index: 10;
+  /* Sit above .messages-area (z-index 12) so the model dropdown — which opens
+     downward into that region — renders on top and stays clickable, and so the
+     bar's drop shadow falls over the messages instead of being covered by them. */
+  position: relative;
+  z-index: 20;
+  box-shadow: 0 30px 30px rgba(0, 0, 0, 0.05);
   height: 3.75rem;
   box-sizing: border-box;
 }
@@ -89,6 +95,12 @@ body {
 #messages {
   flex: 1;
   overflow-y: auto;
+  /* overflow-y:auto alone forces overflow-x to compute to `auto` too, so any
+     too-wide child (code block, table, KaTeX block math) spawns a horizontal
+     scrollbar along the bottom edge — the "black bar" just above the input at
+     narrow widths. Pin overflow-x to hidden so the list never scrolls sideways;
+     wide elements scroll within their own boxes instead. */
+  overflow-x: hidden;
   /* Always reserve room for the scrollbar so the layout doesn't shift sideways
      when it appears. `both-edges` keeps the reserved space symmetric so the
      centered content stays centered. */
@@ -103,9 +115,10 @@ body {
   box-sizing: border-box;
 }
 
-/* Holds the scroll area plus its bottom fade overlay. */
+/* Holds the scroll area plus its bottom fade overlay. Sits above the decorative blurred slab (z-index 12). */
 .messages-area {
   position: relative;
+  z-index: 12;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -218,6 +231,21 @@ body {
   }
 }
 
+/* A fast diagonal glare that sweeps across the bubble face left -> right near
+   the end of the entrance. The highlight lives in an oversized (250%) gradient
+   on ::before; moving background-position-x from 100% to 0% slides the bright
+   band from off the left edge, through the middle, to off the right edge.
+   A single value applies to every background layer, but only the shine layer
+   (the one sized 250%) is wide enough to move — full-size layers are unaffected. */
+@keyframes bubbleShine {
+  from {
+    background-position-x: 100%;
+  }
+  to {
+    background-position-x: 0%;
+  }
+}
+
 #messages > div::before,
 #messages > div::after {
   content: "";
@@ -277,6 +305,24 @@ body {
 
 .assistant::after {
   background-color: rgb(231, 231, 241);
+}
+
+/* The glare sweep. It's a real overlay element (not a background layer) so it
+   can sit in front of the bubble text, above everything via z-index. The wide,
+   near-vertical highlight lives in an oversized gradient; bubbleShine slides it
+   left -> right across the bubble. */
+.bubble-shine {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.535) 50%, transparent 70%);
+  background-repeat: no-repeat;
+  background-size: 250% 100%;
+  background-position-x: 0%;
+  /* Fire at ~82% of the 2.2s entrance and finish right as it settles. */
+  animation: bubbleShine 0.8s ease-out 0.6s backwards;
 }
 
 #messages > div p {
@@ -585,6 +631,97 @@ button.close-btn:active {
 
 .settings-textarea {
   flex: none;
+}
+
+/* Label + live value on one row (e.g. "Temperature   1.00"). */
+.settings-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.settings-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6e6e73;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Slider with step markers. The wrap stacks a custom track (bottom), the tick
+   marks (middle), and the input (top) so the thumb sits above the ticks while
+   the ticks stay visible over the track. */
+.slider-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 1.1rem;
+  margin: 0.35rem 0;
+}
+
+.slider-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Inset by half the thumb width so the end ticks line up with the thumb's
+   travel (its centre can't reach the very edge of the track). */
+.slider-ticks {
+  position: absolute;
+  left: 0.55rem;
+  right: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.slider-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 9px;
+  margin-top: -4.5px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.settings-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  /* Track is drawn by .slider-track underneath; keep the input itself clear so
+     the ticks show through, but on top (z-index 2) so the thumb covers them. */
+  background: transparent;
+  outline: none;
+  margin: 0;
+  position: relative;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #007aff;
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.settings-slider::-webkit-slider-thumb:active {
+  transform: scale(1.15);
 }
 
 

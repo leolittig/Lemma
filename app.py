@@ -190,6 +190,10 @@ def download_model_task(repo_id: str):
 
 class Msg(BaseModel):
     text: str
+    # Per-message generation params from the settings panel. Both optional so
+    # older clients (and the defaults below) keep working unchanged.
+    temperature: Optional[float] = None
+    max_kv_size: Optional[int] = None  # context window; None/<=0 means unlimited
 
 class RestartConfig(BaseModel):
     system_prompt: str = ""
@@ -285,9 +289,19 @@ async def chat(msg: Msg):
     history.append({"role": "user", "content": [{"type": "text", "text": msg.text}]})
     formatted = apply_chat_template(processor, model.config, history, num_images=0)
 
+    # Generation params: fall back to the previous hardcoded defaults when the
+    # client doesn't send them. max_kv_size is only passed when set to a positive
+    # value; otherwise the cache is left unbounded (the original behaviour).
+    gen_kwargs = {
+        "max_tokens": 2048,
+        "temperature": msg.temperature if msg.temperature is not None else 1.0,
+    }
+    if msg.max_kv_size and msg.max_kv_size > 0:
+        gen_kwargs["max_kv_size"] = msg.max_kv_size
+
     async def generate():
         reply = ""
-        for chunk in stream_generate(model, processor, formatted, image=None, max_tokens=2048, temperature=1.0):
+        for chunk in stream_generate(model, processor, formatted, image=None, **gen_kwargs):
             reply += chunk.text
             yield chunk.text
         history.append({"role": "assistant", "content": [{"type": "text", "text": reply.replace("<end_of_utterance>", "").strip()}]})
