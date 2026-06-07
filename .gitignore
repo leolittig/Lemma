@@ -25,6 +25,11 @@ dist/
 # Local app state (user's saved system prompt, written at runtime)
 system_prompt.txt
 
+# Conversation history DB + uploaded media (created at runtime)
+chats.db
+chats.db-journal
+uploads/
+
 # OS / Editor Caches & Configs
 .DS_Store
 Thumbs.db
