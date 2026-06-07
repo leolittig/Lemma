@@ -11,7 +11,10 @@ export default defineConfig({
       '/models': 'http://127.0.0.1:8000',
       '/download': 'http://127.0.0.1:8000',
       '/download/status': 'http://127.0.0.1:8000',
-      '/restart': 'http://127.0.0.1:8000'
+      '/restart': 'http://127.0.0.1:8000',
+      '/conversations': 'http://127.0.0.1:8000',
+      '/upload': 'http://127.0.0.1:8000',
+      '/uploads': 'http://127.0.0.1:8000'
     }
   }
 })

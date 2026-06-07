@@ -1,0 +1,207 @@
+"""Persistence layer for Lemma: conversations, messages, and uploaded files.
+
+Kept free of any mlx / FastAPI imports so it can be unit-tested in isolation and
+reused by the backend without pulling in the (heavy) model stack.
+
+Storage:
+  - chats.db  : SQLite database (conversations + messages)
+  - uploads/  : raw uploaded media, named "<uuid><ext>"; an attachment's `id`
+                IS that filename, so a file path is just uploads/<id>.
+"""
+
+import json
+import shutil
+import sqlite3
+import uuid
+import mimetypes
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+
+DB_FILE = Path("chats.db")
+UPLOADS_DIR = Path("uploads")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+@contextmanager
+def db():
+    """Short-lived connection; commits on clean exit, always closes."""
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_db():
+    UPLOADS_DIR.mkdir(exist_ok=True)
+    with db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id            TEXT PRIMARY KEY,
+                title         TEXT,
+                model         TEXT,
+                system_prompt TEXT,
+                created_at    TEXT,
+                updated_at    TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT,
+                role            TEXT,
+                text            TEXT,
+                attachments     TEXT,   -- JSON: [{id, kind, filename}]
+                position        INTEGER,
+                created_at      TEXT,
+                FOREIGN KEY (conversation_id)
+                    REFERENCES conversations (id) ON DELETE CASCADE
+            )
+            """
+        )
+
+
+# ── Conversations ─────────────────────────────────────────────────────────────
+
+def create_conversation(title=None, model=None, system_prompt="") -> str:
+    cid = uuid.uuid4().hex
+    now = _now()
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO conversations (id, title, model, system_prompt, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (cid, title, model, system_prompt or "", now, now),
+        )
+    return cid
+
+
+def list_conversations() -> list:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, title, model, updated_at FROM conversations ORDER BY updated_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_conversation(cid: str):
+    """Full conversation incl. ordered messages, or None if it doesn't exist."""
+    with db() as conn:
+        conv = conn.execute("SELECT * FROM conversations WHERE id = ?", (cid,)).fetchone()
+        if conv is None:
+            return None
+        msgs = conn.execute(
+            "SELECT role, text, attachments FROM messages"
+            " WHERE conversation_id = ? ORDER BY position ASC",
+            (cid,),
+        ).fetchall()
+    result = dict(conv)
+    result["messages"] = [
+        {
+            "role": m["role"],
+            "text": m["text"],
+            "attachments": json.loads(m["attachments"] or "[]"),
+        }
+        for m in msgs
+    ]
+    return result
+
+
+def update_conversation(cid: str, **fields):
+    """Update title/system_prompt/model; bumps updated_at."""
+    fields = {k: v for k, v in fields.items() if k in ("title", "system_prompt", "model")}
+    if not fields:
+        return
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    vals = list(fields.values()) + [_now(), cid]
+    with db() as conn:
+        conn.execute(f"UPDATE conversations SET {cols}, updated_at = ? WHERE id = ?", vals)
+
+
+def delete_conversation(cid: str):
+    """Delete the conversation (cascades to messages) and its uploaded files."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT attachments FROM messages WHERE conversation_id = ?", (cid,)
+        ).fetchall()
+        for r in rows:
+            for att in json.loads(r["attachments"] or "[]"):
+                delete_upload(att.get("id"))
+        conn.execute("DELETE FROM conversations WHERE id = ?", (cid,))
+
+
+# ── Messages ──────────────────────────────────────────────────────────────────
+
+def add_message(cid: str, role: str, text: str, attachments=None) -> int:
+    """Append a message; returns its 0-based position. Bumps conversation.updated_at."""
+    now = _now()
+    with db() as conn:
+        pos = conn.execute(
+            "SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM messages WHERE conversation_id = ?",
+            (cid,),
+        ).fetchone()["pos"]
+        conn.execute(
+            "INSERT INTO messages (conversation_id, role, text, attachments, position, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (cid, role, text, json.dumps(attachments or []), pos, now),
+        )
+        conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, cid))
+    return pos
+
+
+def clear_messages(cid: str):
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT attachments FROM messages WHERE conversation_id = ?", (cid,)
+        ).fetchall()
+        for r in rows:
+            for att in json.loads(r["attachments"] or "[]"):
+                delete_upload(att.get("id"))
+        conn.execute("DELETE FROM messages WHERE conversation_id = ?", (cid,))
+
+
+# ── Uploads ───────────────────────────────────────────────────────────────────
+
+def save_upload(fileobj, filename: str = "", content_type: str = "") -> dict:
+    """Persist an uploaded file under uploads/<uuid><ext>.
+
+    The returned `id` is the stored filename, so the file path is uploads/<id>.
+    `kind` is image | audio | file, inferred from the content type.
+    """
+    UPLOADS_DIR.mkdir(exist_ok=True)
+    ext = Path(filename or "").suffix or mimetypes.guess_extension(content_type or "") or ""
+    if (content_type or "").startswith("image/"):
+        kind = "image"
+    elif (content_type or "").startswith("audio/"):
+        kind = "audio"
+    else:
+        kind = "file"
+    uid = uuid.uuid4().hex + ext
+    dest = UPLOADS_DIR / uid
+    with dest.open("wb") as out:
+        shutil.copyfileobj(fileobj, out)
+    return {"id": uid, "kind": kind, "filename": filename or uid}
+
+
+def upload_path(uid: str) -> Path:
+    return UPLOADS_DIR / uid
+
+
+def delete_upload(uid):
+    if not uid:
+        return
+    try:
+        p = UPLOADS_DIR / uid
+        if p.exists():
+            p.unlink()
+    except Exception as e:  # pragma: no cover
+        print(f"Error deleting upload {uid}: {e}")
