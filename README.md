@@ -61,8 +61,9 @@ Compiles the React frontend so the Python server can serve it directly:
    ```
 3. Open `http://127.0.0.1:8000` in your browser.
 
-## Model Management & Switching
+## Features
 
-Lemma provides a fully interactive model switcher in the UI's top bar:
-* **Switching Models**: Click the dropdown in the top bar to select from your downloaded models. When switching, the backend automatically unloads the active model, runs garbage collection, and clears the MLX GPU cache to free system memory before loading the new model.
-* **Adding Models**: You can download any MLX-compatible model directly inside the app. Click the add icon in the dropdown and enter any Hugging Face Repository ID (e.g., `mlx-community/gemma-2-9b-it-4bit-mlx`).
+* **Conversation Sidebar**: Lemma saves your conversation history locally using SQLite. You can easily access past chats, rename them, or delete them through the sidebar interface.
+* **Model Management & Switching**: Click the dropdown in the top bar to select from your downloaded models. You can also download any MLX-compatible model directly by entering a Hugging Face Repository ID. When switching, the backend automatically unloads the active model and clears the MLX GPU cache to free system memory.
+* **Thinking Models Support**: Leverage deep-reasoning models (like Qwen or Gemma 4) with a dedicated Thinking toggle. When enabled, Lemma correctly parses the model's inner reasoning stream and neatly formats it into a collapsible block inside the chat interface.
+* **Context & Token Management**: Intuitive sliders in the settings modal let you cap the generation length and control the amount of context (history) sent to the model to optimize VRAM usage.
