@@ -1,5 +1,6 @@
 import os
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+import json
 
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, Request
@@ -261,6 +262,10 @@ class Msg(BaseModel):
     # whose template doesn't read it.
     enable_thinking: Optional[bool] = None
     max_tokens: Optional[int] = None  # maximum length of the model's generated response
+    # Smart context window: when True (default) the over-budget conversation is
+    # split into head/middle/tail bands; when False it's a plain recency cut that
+    # keeps only the most recent messages that fit.
+    smart_context: Optional[bool] = True
 
 class RestartConfig(BaseModel):
     # Repurposed: persist the global default system prompt (seeds new chats).
@@ -406,14 +411,16 @@ def index():
     """
 
 
-# ── Context compression ──────────────────────────────────────────────────────
-# When the prompt exceeds the budget we keep the system prompt + the first
-# COMPRESS_HEAD messages ("initial context") and the last N messages ("current
-# context"), dropping the whole middle. Whole messages only — never split one.
-COMPRESS_HEAD = 2
-COMPRESS_TAIL_START = 10
-COMPRESS_TAIL_MIN = 2
-RESPONSE_HEADROOM = 0.75  # fraction of the budget reserved for the prompt
+# ── Context window (three bands) ──────────────────────────────────────────────
+# When the prompt exceeds the budget we split it into three bands by token share
+# and drop the gaps between them: the system prompt + the start of the chat, a
+# slice from the middle, and the most recent messages. Each band is filled with
+# whole messages up to its share; messages in the gaps fall out of context.
+RESPONSE_HEADROOM = 0.75  # fraction of the window reserved for the prompt
+HEAD_SHARE = 0.30         # budget share for the system prompt + start of the chat
+MIDDLE_SHARE = 0.10       # budget share for a slice from the middle of the chat
+TAIL_SHARE = 0.60         # budget share for the most recent messages
+PER_MSG_OVERHEAD = 8      # tokens the chat template adds wrapping each message
 
 
 def _token_count(text: str) -> int:
@@ -445,11 +452,19 @@ def _strip_think(text):
     return text
 
 
-def build_prompt(messages, system_prompt, num_images, num_audios, budget, enable_thinking=None):
-    """Format the conversation for the model, trimming the middle if it exceeds
-    `budget` tokens. Returns (formatted_str, trimmed: bool). budget=None or 0
-    disables trimming. `enable_thinking` (when not None) is forwarded to the chat
-    template to turn the reasoning phase on/off for models that support it."""
+def build_prompt(messages, system_prompt, num_images, num_audios, budget, enable_thinking=None, smart=True):
+    """Format the conversation for the model. When it exceeds `budget` tokens and
+    `smart` is True, keep three bands and drop the gaps between them:
+      - HEAD_SHARE of the budget: system prompt + the earliest messages.
+      - MIDDLE_SHARE: a contiguous slice grown out from the middle of the chat.
+      - TAIL_SHARE: the most recent messages (the current turn is always kept).
+    Each band is filled with whole messages up to its share. When `smart` is
+    False it's a plain recency cut: keep only the most recent messages that fit,
+    dropping the older ones. budget=None or 0 disables trimming.
+
+    Returns (formatted_str, trimmed, out_ranges) where out_ranges is a list of
+    [start, end) message-index ranges that fell out of context. `enable_thinking`
+    (when not None) is forwarded to the chat template."""
     extra = {} if enable_thinking is None else {"enable_thinking": enable_thinking}
 
     def assemble(msgs):
@@ -469,18 +484,88 @@ def build_prompt(messages, system_prompt, num_images, num_audios, budget, enable
 
     formatted = fmt(messages)
     if not budget or _token_count(formatted) <= budget:
-        return formatted, False
+        return formatted, False, []
 
-    did_trim = False
-    n = COMPRESS_TAIL_START
-    while len(messages) > COMPRESS_HEAD + n:
-        candidate = messages[:COMPRESS_HEAD] + messages[-n:]
-        formatted = fmt(candidate)
-        did_trim = True
-        if _token_count(formatted) <= budget or n <= COMPRESS_TAIL_MIN:
-            break
-        n -= 1
-    return formatted, did_trim
+    n = len(messages)
+    tok = processor.tokenizer if hasattr(processor, "tokenizer") else processor
+
+    if not smart:
+        # Plain recency cut: keep the largest run of most-recent whole messages
+        # that fits (always at least the current turn); drop everything older.
+        def fits(k):
+            return _token_count(fmt(messages[n - k:] if k else [])) <= budget
+        lo, hi = 1, n
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if fits(mid):
+                lo = mid
+            else:
+                hi = mid - 1
+        kept = lo  # >= 1
+        out_ranges = [[0, n - kept]] if kept < n else []
+        return fmt(messages[n - kept:]), bool(out_ranges), out_ranges
+    msg_tok = [len(tok.encode(m["text"])) + PER_MSG_OVERHEAD for m in messages]
+    sys_tok = (len(tok.encode(system_prompt)) if system_prompt else 0) + PER_MSG_OVERHEAD
+
+    kept = [False] * n
+
+    # Tail band: the most recent messages. The current turn (last message) is
+    # always kept, even if it alone overruns the tail's share.
+    left = TAIL_SHARE * budget
+    kept[n - 1] = True
+    left -= msg_tok[n - 1]
+    tail_start = n - 1
+    i = n - 2
+    while i >= 0 and msg_tok[i] <= left:
+        kept[i] = True
+        left -= msg_tok[i]
+        tail_start = i
+        i -= 1
+
+    # Head band: system prompt + the earliest messages (the system prompt counts
+    # against this share). Never crosses into the tail band.
+    left = HEAD_SHARE * budget - sys_tok
+    head_end = 0
+    i = 0
+    while i < tail_start and msg_tok[i] <= left:
+        kept[i] = True
+        left -= msg_tok[i]
+        head_end = i + 1
+        i += 1
+
+    # Middle band: a contiguous window grown outward from the chat's midpoint,
+    # confined to the gap between the head and tail bands.
+    if head_end < tail_start:
+        left = MIDDLE_SHARE * budget
+        center = min(max(n // 2, head_end), tail_start - 1)
+        if msg_tok[center] <= left:
+            kept[center] = True
+            left -= msg_tok[center]
+            lo, hi = center - 1, center + 1
+            while True:
+                grew = False
+                if hi < tail_start and msg_tok[hi] <= left:
+                    kept[hi] = True; left -= msg_tok[hi]; hi += 1; grew = True
+                if lo >= head_end and msg_tok[lo] <= left:
+                    kept[lo] = True; left -= msg_tok[lo]; lo -= 1; grew = True
+                if not grew:
+                    break
+
+    # Maximal runs of dropped messages = the gaps between the kept bands.
+    out_ranges = []
+    i = 0
+    while i < n:
+        if kept[i]:
+            i += 1
+            continue
+        j = i
+        while j < n and not kept[j]:
+            j += 1
+        out_ranges.append([i, j])
+        i = j
+
+    formatted = fmt([messages[i] for i in range(n) if kept[i]])
+    return formatted, True, out_ranges
 
 
 @app.post("/chat")
@@ -518,9 +603,10 @@ async def chat(msg: Msg, request: Request):
     if msg.max_kv_size and msg.max_kv_size > 0:
         budget = max(128, int(msg.max_kv_size * RESPONSE_HEADROOM))
 
-    formatted, trimmed = build_prompt(
+    formatted, trimmed, out_ranges = build_prompt(
         history_msgs, system_prompt, len(image_paths), len(audio_paths), budget,
         enable_thinking=msg.enable_thinking,
+        smart=msg.smart_context is not False,
     )
 
     max_tok = msg.max_tokens if msg.max_tokens is not None else 2048
@@ -592,8 +678,17 @@ async def chat(msg: Msg, request: Request):
         clean = final_text.replace("<end_of_utterance>", "").strip()
         db.add_message(cid, "assistant", clean, [])
 
-    # X-Context-Trimmed lets the UI show an "earlier messages trimmed" marker.
-    headers = {"X-Context-Trimmed": "1"} if trimmed else {}
+    # Tell the UI which message ranges fell into the gaps between the kept bands.
+    # Persist it on the conversation too, so the dim survives reloads; clear it
+    # (None) when the turn fit without trimming.
+    headers = {}
+    if trimmed and out_ranges:
+        ranges_json = json.dumps(out_ranges)
+        headers["X-Context-Trimmed"] = "1"
+        headers["X-Context-Out-Ranges"] = ranges_json
+        db.set_context_window(cid, ranges_json)
+    else:
+        db.set_context_window(cid, None)
     return StreamingResponse(generate(), media_type="text/plain", headers=headers)
 
 

@@ -5,10 +5,27 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import Sidebar from './Sidebar';
 
-// Configure marked to parse LaTeX math formulas using KaTeX
+// Configure marked to parse LaTeX math formulas using KaTeX. nonStandard lets
+// inline math sit flush against adjacent punctuation — without it the default
+// rule rejects common cases like "($\infty$)" or "($\mathbf{d[v]}$)" (a closing
+// "$" directly before ")") and leaves them as raw source.
 marked.use(markedKatex({
-  throwOnError: false
+  throwOnError: false,
+  nonStandard: true
 }));
+
+// `$$…$$` written mid-sentence is parsed as inline math but tagged
+// displayMode:true, which KaTeX renders as a centered block — breaking the
+// equation onto its own line in the middle of the surrounding text. Math that
+// sits inline (inlineKatex) should always render inline; only true block math
+// (blockKatex, on its own line) stays in display mode. This walkTokens runs for
+// the completed-message render (marked.parse); the streaming renderToken path
+// applies the same rule directly.
+marked.use({
+  walkTokens(token) {
+    if (token.type === 'inlineKatex') token.displayMode = false;
+  },
+});
 
 // Render the model name for the app bar. Each '-' separated word is normally
 // capitalised, but once a word ends with the letter 'b' (case insensitive) that
@@ -109,6 +126,9 @@ const renderToken = (token, keyPath) => {
       return <del key={keyPath}>{renderTokens(token.tokens, `${keyPath}-del`)}</del>;
     case 'escape':
       return <span key={keyPath}>{decodeEntities(token.text)}</span>;
+    // marked-katex-extension emits these token types (not inlineMath/blockMath).
+    // Each carries its own displayMode, so honour it rather than assuming.
+    case 'inlineKatex':
     case 'inlineMath':
       return (
         <span
@@ -118,12 +138,13 @@ const renderToken = (token, keyPath) => {
           }}
         />
       );
+    case 'blockKatex':
     case 'blockMath':
       return (
         <div
           key={keyPath}
           dangerouslySetInnerHTML={{
-            __html: katex.renderToString(token.text, { displayMode: true, throwOnError: false })
+            __html: katex.renderToString(token.text, { displayMode: token.displayMode !== false, throwOnError: false })
           }}
         />
       );
@@ -176,6 +197,61 @@ const renderTokens = (tokens, keyPrefix) => {
   if (!tokens) return null;
   return tokens.map((token, index) => renderToken(token, `${keyPrefix}-${index}`));
 };
+
+// Dim the leading `frac` (0..1) of a rendered message's words to show they fell
+// out of the model's context. Each visible word becomes a span and rendered math
+// (.katex) counts as one atomic unit, so we can dim a precise prefix. Runs over
+// the already-rendered DOM, so markdown and KaTeX stay intact.
+const dimLeadingWords = (root, frac) => {
+  if (!root || frac <= 0) return;
+  // Collect, in document order, a "dim this unit" action for every word and
+  // every atomic .katex element. Words are wrapped in spans as we go.
+  const actions = [];
+  const walk = (node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if (child.classList && child.classList.contains('katex')) {
+          actions.push(() => child.classList.add('word-out'));
+        } else {
+          walk(child);
+        }
+      } else if (child.nodeType === Node.TEXT_NODE) {
+        if (!/\S/.test(child.textContent)) continue;
+        const frag = document.createDocumentFragment();
+        for (const part of child.textContent.split(/(\s+)/)) {
+          if (part === '') continue;
+          if (/^\s+$/.test(part)) {
+            frag.appendChild(document.createTextNode(part));
+            continue;
+          }
+          const span = document.createElement('span');
+          span.textContent = part;
+          frag.appendChild(span);
+          actions.push(() => span.classList.add('word-out'));
+        }
+        child.parentNode.replaceChild(frag, child);
+      }
+    }
+  };
+  walk(root);
+
+  const dimCount = Math.min(actions.length, Math.round(frac * actions.length));
+  for (let i = 0; i < dimCount; i++) actions[i]();
+};
+
+// Renders a completed message's markdown/KaTeX into the bubble, then dims the
+// leading `dimFrac` of its words (0 = none, 1 = the whole message is out of
+// context). Imperative because dimming walks the rendered DOM after marked.parse.
+function BubbleText({ text, dimFrac }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.innerHTML = marked.parse(text);
+    dimLeadingWords(el, dimFrac);
+  }, [text, dimFrac]);
+  return <div className="bubble-text" ref={ref} />;
+}
 
 const adjustTextareaHeight = (textarea) => {
   if (!textarea) return;
@@ -321,11 +397,18 @@ export default function App() {
   const [thinkingEnabled, setThinkingEnabled] = useState(
     () => localStorage.getItem('thinking_enabled') !== '0'
   );
+  // Smart context window: head/middle/tail bands when on, a plain recency cut
+  // (keep the most recent messages that fit) when off. Defaults on; persisted.
+  const [smartContext, setSmartContext] = useState(
+    () => localStorage.getItem('smart_context') !== '0'
+  );
   // Pending attachments for the message currently being composed:
   // [{ id, kind, filename, uploading }]. Cleared after send.
   const [pendingAttachments, setPendingAttachments] = useState([]);
-  // True once the backend reports it trimmed the middle of the context to fit.
-  const [contextTrimmed, setContextTrimmed] = useState(false);
+  // Message-index ranges that fell into the gaps between the kept context bands
+  // on the last turn, or null when nothing fell out: { ranges: [[start, end), …] }.
+  // Messages inside a range are tinted and dimmed.
+  const [outOfContext, setOutOfContext] = useState(null);
   // True if the active model supports thinking/reasoning
   const [supportsThinking, setSupportsThinking] = useState(true);
   // Messages with index >= this get the entrance fly-in; lower indices are
@@ -342,6 +425,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('thinking_enabled', thinkingEnabled ? '1' : '0');
   }, [thinkingEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('smart_context', smartContext ? '1' : '0');
+  }, [smartContext]);
 
   const handleOverlayMouseDown = (e) => {
     overlayMouseDownRef.current = (e.target === e.currentTarget);
@@ -462,7 +549,14 @@ export default function App() {
       setActiveId(id);
       setHistory(msgs);
       setAnimateFromIndex(msgs.length); // already-saved messages appear instantly
-      setContextTrimmed(false);
+      // Restore the persisted out-of-context ranges so the dim survives reloads
+      // and conversation switches.
+      let ooc = null;
+      try {
+        const parsed = conv.context_out_ranges ? JSON.parse(conv.context_out_ranges) : null;
+        if (Array.isArray(parsed) && parsed.length) ooc = { ranges: parsed };
+      } catch { /* leave null */ }
+      setOutOfContext(ooc);
       setPendingAttachments([]);
       isLockedRef.current = true;
       ensureScrollAnimation();
@@ -488,7 +582,7 @@ export default function App() {
       setActiveId(id);
       setHistory([]);
       setAnimateFromIndex(0);
-      setContextTrimmed(false);
+      setOutOfContext(null);
       setPendingAttachments([]);
     } catch (err) {
       console.error('Error creating conversation:', err);
@@ -524,7 +618,7 @@ export default function App() {
         if (id === activeIdRef.current) {
           setHistory([]);
           setAnimateFromIndex(0);
-          setContextTrimmed(false);
+          setOutOfContext(null);
           setPendingAttachments([]);
         }
         return;
@@ -967,6 +1061,7 @@ export default function App() {
           max_kv_size: Number.isFinite(parsedContext) && parsedContext > 0 ? parsedContext : null,
           enable_thinking: thinkingEnabled,
           max_tokens: Number.isFinite(parsedMaxTokens) ? parsedMaxTokens : null,
+          smart_context: smartContext,
         }),
         signal: controller.signal,
       });
@@ -974,9 +1069,16 @@ export default function App() {
       if (!res.ok) {
         throw new Error(`Server returned status ${res.status}`);
       }
-      // The backend flags when it dropped the middle of the context to fit.
+      // The backend reports which message ranges fell into the gaps between bands.
       if (res.headers.get('X-Context-Trimmed') === '1') {
-        setContextTrimmed(true);
+        let ranges = null;
+        try {
+          const parsed = JSON.parse(res.headers.get('X-Context-Out-Ranges') || '[]');
+          if (Array.isArray(parsed) && parsed.length) ranges = { ranges: parsed };
+        } catch { /* leave null */ }
+        setOutOfContext(ranges);
+      } else {
+        setOutOfContext(null);
       }
 
       // Add a placeholder message for the assistant that we will update with streamed content
@@ -1216,14 +1318,6 @@ export default function App() {
       />
       <div className="app-container">
       <div className="messages-area">
-      {contextTrimmed && (
-        <div className="context-trimmed-banner">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          Earlier messages are trimmed from the model's context
-        </div>
-      )}
       <div
         id="messages"
         ref={messagesContainerRef}
@@ -1240,7 +1334,12 @@ export default function App() {
           const inlineStyle = { '--random-y': `${randomY}px` };
           // Already-saved messages (loaded from the server) skip the fly-in.
           const animate = index >= animateFromIndex;
-          const cls = `${msg.role}${animate ? '' : ' no-anim'}`;
+          // Messages that fell into a gap between the kept bands are out of
+          // context: tint the bubble and dim its words.
+          const fullyOut = !!(outOfContext &&
+            outOfContext.ranges.some(([s, e]) => index >= s && index < e));
+          const dimFrac = fullyOut ? 1 : 0;
+          const cls = `${msg.role}${animate ? '' : ' no-anim'}${fullyOut ? ' out-of-context' : ''}`;
 
           const atts = msg.attachments || [];
           const attBlock = atts.length > 0 ? (
@@ -1303,7 +1402,7 @@ export default function App() {
                 <div className="message-bubble">
                   {attBlock}
                   {parsed.answer ? (
-                    <div className="bubble-text" dangerouslySetInnerHTML={{ __html: marked.parse(parsed.answer) }} />
+                    <BubbleText text={parsed.answer} dimFrac={dimFrac} />
                   ) : null}
                   {animate && <span className="bubble-shine" aria-hidden="true" />}
                 </div>
@@ -1472,6 +1571,21 @@ export default function App() {
                   value={ctxIndex}
                   onChange={(e) => setContextSize(String(CTX_STEPS[parseInt(e.target.value, 10)]))}
                 />
+              </div>
+            </div>
+            <div className="settings-field">
+              <div className="settings-toggle-row">
+                <label className="settings-label">Smart context window</label>
+                <button
+                  type="button"
+                  className={`thinking-switch ${smartContext ? 'on' : 'off'}`}
+                  onClick={() => setSmartContext((v) => !v)}
+                  aria-label={smartContext ? 'Disable smart context window' : 'Enable smart context window'}
+                  aria-pressed={smartContext}
+                  title={smartContext ? 'Smart context: on' : 'Smart context: off'}
+                >
+                  <div className="thinking-switch-handle" />
+                </button>
               </div>
             </div>
             <div className="settings-field">

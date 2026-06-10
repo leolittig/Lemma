@@ -50,10 +50,18 @@ def init_db():
                 model         TEXT,
                 system_prompt TEXT,
                 created_at    TEXT,
-                updated_at    TEXT
+                updated_at    TEXT,
+                -- JSON list of [start, end) message-index ranges that fell into the
+                -- gaps between the kept context bands on the last turn, so the UI can
+                -- persist the dim across reloads. NULL when the turn fit untrimmed.
+                context_out_ranges TEXT
             )
             """
         )
+        # Backfill the context column for databases created before it existed.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()}
+        if "context_out_ranges" not in cols:
+            conn.execute("ALTER TABLE conversations ADD COLUMN context_out_ranges TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -125,6 +133,17 @@ def update_conversation(cid: str, **fields):
     vals = list(fields.values()) + [_now(), cid]
     with db() as conn:
         conn.execute(f"UPDATE conversations SET {cols}, updated_at = ? WHERE id = ?", vals)
+
+
+def set_context_window(cid: str, out_ranges_json):
+    """Persist the JSON list of out-of-context message ranges from the last turn,
+    or None when nothing fell out. Pure display metadata — deliberately does not
+    bump updated_at, so it never reorders the conversation list."""
+    with db() as conn:
+        conn.execute(
+            "UPDATE conversations SET context_out_ranges = ? WHERE id = ?",
+            (out_ranges_json, cid),
+        )
 
 
 def delete_conversation(cid: str):
