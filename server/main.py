@@ -17,8 +17,9 @@ from fastapi.staticfiles import StaticFiles
 from . import config
 from .mlx_compat import install_lenient_weight_loading
 from .model_manager import manager
-from .routes import chat, conversations, files, frontend, models
+from .routes import chat, conversations, files, frontend, models, brain
 from .storage import database, uploads
+from .storage import brain as storage_brain
 
 install_lenient_weight_loading()
 manager.load_initial()
@@ -27,6 +28,7 @@ app = FastAPI(title="Lemma")
 
 database.init_db()
 uploads.ensure_uploads_dir()
+storage_brain.init_brains()
 
 # Uploaded attachments are served straight from disk: /uploads/<id>.
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
@@ -36,6 +38,7 @@ app.include_router(models.router)
 app.include_router(conversations.router)
 app.include_router(files.router)
 app.include_router(frontend.router)
+app.include_router(brain.router)
 
 # In production mode (after npm run build) the compiled frontend assets are
 # served by this server; in development Vite serves them instead.

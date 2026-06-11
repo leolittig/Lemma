@@ -26,6 +26,12 @@ def get_active_model():
 
 @router.post("/model")
 async def select_model(sel: ModelSelectRequest):
+    if not sel.model or not sel.model.strip():
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Model path cannot be empty."})
+
+    if len(sel.model) > 255:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Model path is too long."})
+
     try:
         manager.switch_to(sel.model)
     except Exception as e:

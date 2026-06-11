@@ -24,6 +24,7 @@ import Composer from './components/Composer';
 import SettingsModal from './components/SettingsModal';
 import AddModelModal from './components/AddModelModal';
 import ModelLoadingOverlay from './components/ModelLoadingOverlay';
+import BrainExplorer from './components/BrainExplorer';
 
 export default function App() {
   const settings = useSettings();
@@ -50,6 +51,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAddModel, setShowAddModel] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [showBrainExplorer, setShowBrainExplorer] = useState(false);
 
   const handleSelectModel = async (model) => {
     setShowModelPicker(false);
@@ -86,6 +88,8 @@ export default function App() {
         onToggleSidebar={() => settings.setSidebarCollapsed((v) => !v)}
         onNewChat={conversations.newChat}
         onOpenSettings={() => setShowSettings(true)}
+        onToggleBrainExplorer={() => setShowBrainExplorer((v) => !v)}
+        showBrainExplorer={showBrainExplorer}
         modelPickerProps={{
           open: showModelPicker,
           onToggle: handleToggleModelPicker,
@@ -112,26 +116,35 @@ export default function App() {
           onDelete={conversations.remove}
         />
         <div className="app-container">
-          <MessageList
-            history={conversations.history}
-            isResponding={chat.isResponding}
-            outOfContext={conversations.outOfContext}
-            animateFromIndex={conversations.animateFromIndex}
-            registerMessageRef={registerMessageRef}
-            scroll={scroll}
-            onThinkingOpened={scroll.releaseLock}
-          />
-          <Composer
-            inputText={chat.inputText}
-            onInputChange={chat.setInputText}
-            onSubmit={chat.send}
-            onStop={chat.stop}
-            isResponding={chat.isResponding}
-            supportsThinking={models.supportsThinking}
-            thinkingEnabled={settings.thinkingEnabled}
-            onToggleThinking={() => settings.setThinkingEnabled((v) => !v)}
-            attachments={attachments}
-          />
+          {showBrainExplorer ? (
+            <BrainExplorer
+              brainMode={settings.brainMode}
+              onClose={() => setShowBrainExplorer(false)}
+            />
+          ) : (
+            <>
+              <MessageList
+                history={conversations.history}
+                isResponding={chat.isResponding}
+                outOfContext={conversations.outOfContext}
+                animateFromIndex={conversations.animateFromIndex}
+                registerMessageRef={registerMessageRef}
+                scroll={scroll}
+                onThinkingOpened={scroll.releaseLock}
+              />
+              <Composer
+                inputText={chat.inputText}
+                onInputChange={chat.setInputText}
+                onSubmit={chat.send}
+                onStop={chat.stop}
+                isResponding={chat.isResponding}
+                supportsThinking={models.supportsThinking}
+                thinkingEnabled={settings.thinkingEnabled}
+                onToggleThinking={() => settings.setThinkingEnabled((v) => !v)}
+                attachments={attachments}
+              />
+            </>
+          )}
           <SettingsModal
             open={showSettings}
             onClose={() => setShowSettings(false)}

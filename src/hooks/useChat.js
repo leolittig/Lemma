@@ -103,6 +103,7 @@ function buildChatBody(cid, text, readyAttachments, settings) {
     enable_thinking: settings.thinkingEnabled,
     max_tokens: Number.isFinite(parsedMaxTokens) ? parsedMaxTokens : null,
     smart_context: settings.smartContext,
+    brain_mode: settings.brainMode,
   };
 }
 

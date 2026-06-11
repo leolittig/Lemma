@@ -11,6 +11,16 @@ from pathlib import Path
 # the directory it was launched from.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# The main directory holding all memory graph variations.
+BRAIN_ROOT = PROJECT_ROOT / "brain"
+
+# The isolated subdirectories for each model/agent brain configuration.
+BRAIN_MODES = {
+    "everything-12b": BRAIN_ROOT / "everything-12b",
+    "12b-chat-e4b-brain": BRAIN_ROOT / "12b-chat-e4b-brain",
+    "e4b-chat-12b-brain": BRAIN_ROOT / "e4b-chat-12b-brain",
+}
+
 # Where conversations and messages are stored (SQLite).
 DB_FILE = PROJECT_ROOT / "chats.db"
 

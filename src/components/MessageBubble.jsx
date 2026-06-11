@@ -12,6 +12,7 @@ import { marked, renderTokens } from '../lib/markdown';
 import { parseThinking } from '../lib/thinking';
 import BubbleText from './BubbleText';
 import ThinkingBlock from './ThinkingBlock';
+import BrainActivityBlock from './BrainActivityBlock';
 
 export default function MessageBubble({
   message,
@@ -69,8 +70,13 @@ export default function MessageBubble({
       ? <BubbleText text={parsed.answer} dimFrac={fullyOut ? 1 : 0} />
       : null);
 
+  const brainActivityBlock = message.role === 'assistant' && message.brain_activity ? (
+    <BrainActivityBlock activity={message.brain_activity} />
+  ) : null;
+
   return (
     <div ref={registerRef(index)} className={cls} style={inlineStyle}>
+      {brainActivityBlock}
       {thinkingBlock}
       {hasContent ? (
         <div className="message-bubble">

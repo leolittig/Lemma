@@ -19,6 +19,7 @@ const BACKEND_PATHS = [
   '/conversations',
   '/upload',
   '/uploads',
+  '/api',
 ]
 
 export default defineConfig({

@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
     # split into head/middle/tail bands; when False it's a plain recency cut
     # that keeps only the most recent messages that fit.
     smart_context: Optional[bool] = True
+    brain_mode: Optional[str] = None
 
 
 class ModelSelectRequest(BaseModel):

@@ -46,6 +46,7 @@ export function useConversations({ getDefaults, onOpened, onCleared }) {
         role: m.role,
         text: m.text,
         attachments: m.attachments || [],
+        brain_activity: m.brain_activity || null,
       })));
       setAnimateFromIndex((conv.messages || []).length);
       setOutOfContext(parseStoredRanges(conv.context_out_ranges));

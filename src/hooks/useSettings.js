@@ -50,6 +50,10 @@ export function useSettings() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistentState(
     'sidebar_collapsed', loadBool(false), saveBool);
 
+  // Which brain mode configuration to use for the Brain feature.
+  const [brainMode, setBrainMode] = usePersistentState(
+    'brain_mode', asString('everything-12b'), saveString);
+
   return {
     systemPrompt, setSystemPrompt,
     temperature, setTemperature,
@@ -58,5 +62,6 @@ export function useSettings() {
     thinkingEnabled, setThinkingEnabled,
     smartContext, setSmartContext,
     sidebarCollapsed, setSidebarCollapsed,
+    brainMode, setBrainMode,
   };
 }

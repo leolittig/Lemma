@@ -113,3 +113,32 @@ export async function uploadAttachment(file) {
   const res = await fetch('/upload', { method: 'POST', body: form });
   return res.json();
 }
+
+// Brain
+
+export async function fetchBrainGraph(mode) {
+  const res = await fetch(`/api/brain/graph?mode=${encodeURIComponent(mode)}`);
+  if (!res.ok) throw new Error('Brain graph fetch failed');
+  return res.json(); // { nodes: [...], links: [...] }
+}
+
+export async function fetchBrainFile(mode, filename) {
+  const res = await fetch(`/api/brain/file?mode=${encodeURIComponent(mode)}&filename=${encodeURIComponent(filename)}`);
+  if (!res.ok) throw new Error('Brain file fetch failed');
+  return res.json(); // { content: "..." }
+}
+
+export async function saveBrainFile(mode, filename, content) {
+  const res = await postJSON(`/api/brain/file?mode=${encodeURIComponent(mode)}&filename=${encodeURIComponent(filename)}`, { content });
+  return res.json();
+}
+
+export async function deleteBrainFile(mode, filename) {
+  const res = await fetch(`/api/brain/file?mode=${encodeURIComponent(mode)}&filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  return res.json();
+}
+
+export async function setBrainMode(mode) {
+  const res = await postJSON('/api/brain/mode', { mode });
+  return res.json();
+}

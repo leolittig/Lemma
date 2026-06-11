@@ -68,6 +68,7 @@ def init_db():
                 role            TEXT,
                 text            TEXT,
                 attachments     TEXT,   -- JSON: [{id, kind, filename}]
+                brain_activity  TEXT,   -- JSON: {"files_read": [], "files_written": [], "routing_reasoning": ""}
                 position        INTEGER,
                 created_at      TEXT,
                 FOREIGN KEY (conversation_id)
@@ -75,6 +76,10 @@ def init_db():
             )
             """
         )
+        # Backfill the brain_activity column for databases created before it existed.
+        messages_cols = {r["name"] for r in conn.execute("PRAGMA table_info(messages)").fetchall()}
+        if "brain_activity" not in messages_cols:
+            conn.execute("ALTER TABLE messages ADD COLUMN brain_activity TEXT")
 
 
 def create_conversation(title=None, model=None, system_prompt="") -> str:
@@ -106,7 +111,7 @@ def get_conversation(cid: str):
         if conv is None:
             return None
         msgs = conn.execute(
-            "SELECT role, text, attachments FROM messages"
+            "SELECT role, text, attachments, brain_activity FROM messages"
             " WHERE conversation_id = ? ORDER BY position ASC",
             (cid,),
         ).fetchall()
@@ -116,6 +121,7 @@ def get_conversation(cid: str):
             "role": m["role"],
             "text": m["text"],
             "attachments": json.loads(m["attachments"] or "[]"),
+            "brain_activity": json.loads(m["brain_activity"]) if m["brain_activity"] else None,
         }
         for m in msgs
     ]
@@ -156,7 +162,7 @@ def delete_conversation(cid: str):
         conn.execute("DELETE FROM conversations WHERE id = ?", (cid,))
 
 
-def add_message(cid: str, role: str, text: str, attachments=None) -> int:
+def add_message(cid: str, role: str, text: str, attachments=None, brain_activity=None) -> int:
     """Append a message; returns its 0-based position. Bumps conversation.updated_at."""
     now = _now()
     with _connect() as conn:
@@ -165,12 +171,21 @@ def add_message(cid: str, role: str, text: str, attachments=None) -> int:
             (cid,),
         ).fetchone()["pos"]
         conn.execute(
-            "INSERT INTO messages (conversation_id, role, text, attachments, position, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (cid, role, text, json.dumps(attachments or []), pos, now),
+            "INSERT INTO messages (conversation_id, role, text, attachments, brain_activity, position, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (cid, role, text, json.dumps(attachments or []), json.dumps(brain_activity) if brain_activity is not None else None, pos, now),
         )
         conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, cid))
     return pos
+
+
+def update_message_brain_activity(cid: str, position: int, brain_activity: dict):
+    """Updates the brain_activity JSON of the message at msg_pos in the conversation."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE messages SET brain_activity = ? WHERE conversation_id = ? AND position = ?",
+            (json.dumps(brain_activity), cid, position)
+        )
 
 
 def clear_messages(cid: str):

@@ -1,0 +1,124 @@
+/* The brain activity block (components/BrainActivityBlock.jsx) — a collapsible
+   panel above assistant messages showing brain file operations and routing
+   reasoning. Visually similar to the thinking block but with its own accent. */
+
+.brain-activity-block {
+  margin-bottom: 0.6rem;
+}
+
+.brain-activity-block:last-child {
+  margin-bottom: 0;
+}
+
+button.brain-activity-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0.2rem 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #7c6fc4;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.brain-activity-toggle-row:hover {
+  background: transparent;
+  color: #5b4fa0;
+  transform: none;
+}
+
+button.brain-activity-toggle-row:active {
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+}
+
+.brain-activity-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.brain-activity-chevron {
+  flex-shrink: 0;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-left: 0.1rem;
+}
+
+.brain-activity-block.open .brain-activity-chevron {
+  transform: rotate(90deg);
+}
+
+.brain-activity-content {
+  margin-top: 0.4rem;
+  padding: 0.7rem 0.9rem;
+  background: rgba(124, 111, 196, 0.04);
+  border-radius: 0.7rem;
+  border: 1px solid rgba(124, 111, 196, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  animation: brainActivityFadeIn 0.25s ease-out;
+}
+
+@keyframes brainActivityFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.brain-activity-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8a8a90;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.brain-activity-reasoning-text {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #5a5a60;
+}
+
+.brain-activity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.brain-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.brain-chip-read {
+  background: rgba(0, 122, 255, 0.08);
+  color: #0066d6;
+}
+
+.brain-chip-written {
+  background: rgba(52, 199, 89, 0.1);
+  color: #248a3d;
+}
+
+.brain-chip-deleted {
+  background: rgba(255, 59, 48, 0.08);
+  color: #d70015;
+}

@@ -7,6 +7,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import Modal from './Modal';
+import * as api from '../api/client';
 import ToggleSwitch from './ToggleSwitch';
 import { adjustTextareaHeight } from '../lib/textarea';
 import {
@@ -60,6 +61,7 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
     contextSize, setContextSize,
     maxTokens, setMaxTokens,
     smartContext, setSmartContext,
+    brainMode, setBrainMode,
   } = settings;
 
   // Keep the instructions textarea sized to its content, also right after the
@@ -125,6 +127,27 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
           value={maxTokensIndex}
           onChange={(v) => setMaxTokens(String(MAX_TOKENS_STEPS[parseInt(v, 10)]))}
         />
+        <div className="settings-section-divider" />
+        <label className="settings-section-title">Brain Configuration</label>
+        <div className="settings-field">
+          <div className="settings-label-row">
+            <label className="settings-label">Brain Mode</label>
+          </div>
+          <select
+            id="brain-mode-select"
+            className="settings-select"
+            value={brainMode}
+            onChange={(e) => {
+              const newMode = e.target.value;
+              setBrainMode(newMode);
+              api.setBrainMode(newMode).catch(console.error);
+            }}
+          >
+            <option value="everything-12b">Everything 12B (Single Model)</option>
+            <option value="12b-chat-e4b-brain">12B Chat + e4b Brain Manager</option>
+            <option value="e4b-chat-12b-brain">e4b Chat + 12B Brain Manager</option>
+          </select>
+        </div>
         <div className="settings-actions">
           <button className="settings-action-btn secondary" onClick={onReloadModel}>
             Save and reload
