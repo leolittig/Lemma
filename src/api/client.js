@@ -138,6 +138,28 @@ export async function deleteBrainFile(mode, filename) {
   return res.json();
 }
 
+export async function renameBrainFile(mode, oldFilename, newFilename) {
+  const res = await postJSON(`/api/brain/rename?mode=${encodeURIComponent(mode)}`, {
+    old_filename: oldFilename,
+    new_filename: newFilename,
+  });
+  if (!res.ok) {
+    let msg = 'Brain file rename failed';
+    try {
+      const errData = await res.json();
+      msg = errData.detail || errData.message || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function resetBrain(mode) {
+  const res = await postJSON(`/api/brain/reset?mode=${encodeURIComponent(mode)}`);
+  if (!res.ok) throw new Error('Brain reset failed');
+  return res.json();
+}
+
 export async function setBrainMode(mode) {
   const res = await postJSON('/api/brain/mode', { mode });
   return res.json();

@@ -50,9 +50,9 @@ export function useSettings() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistentState(
     'sidebar_collapsed', loadBool(false), saveBool);
 
-  // Which brain mode configuration to use for the Brain feature.
-  const [brainMode, setBrainMode] = usePersistentState(
-    'brain_mode', asString('everything-12b'), saveString);
+  // Whether the brain memory feature is enabled.
+  const [brainEnabled, setBrainEnabled] = usePersistentState(
+    'brain_enabled', loadBool(true), saveBool);
 
   return {
     systemPrompt, setSystemPrompt,
@@ -62,6 +62,6 @@ export function useSettings() {
     thinkingEnabled, setThinkingEnabled,
     smartContext, setSmartContext,
     sidebarCollapsed, setSidebarCollapsed,
-    brainMode, setBrainMode,
+    brainEnabled, setBrainEnabled,
   };
 }

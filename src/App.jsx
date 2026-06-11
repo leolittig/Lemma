@@ -81,6 +81,14 @@ export default function App() {
     return started;
   };
 
+  // Scroll to bottom when returning to chat from the brain view.
+  useEffect(() => {
+    if (!showBrainExplorer) {
+      scroll.lockToBottom();
+      scroll.notifyContentChanged();
+    }
+  }, [showBrainExplorer]);
+
   return (
     <div className="app-shell">
       <TopBar
@@ -88,8 +96,8 @@ export default function App() {
         onToggleSidebar={() => settings.setSidebarCollapsed((v) => !v)}
         onNewChat={conversations.newChat}
         onOpenSettings={() => setShowSettings(true)}
-        onToggleBrainExplorer={() => setShowBrainExplorer((v) => !v)}
-        showBrainExplorer={showBrainExplorer}
+        onToggleBrainExplorer={settings.brainEnabled ? (() => setShowBrainExplorer((v) => !v)) : null}
+        showBrainExplorer={showBrainExplorer && settings.brainEnabled}
         modelPickerProps={{
           open: showModelPicker,
           onToggle: handleToggleModelPicker,
@@ -118,7 +126,7 @@ export default function App() {
         <div className="app-container">
           {showBrainExplorer ? (
             <BrainExplorer
-              brainMode={settings.brainMode}
+              brainMode="active"
               onClose={() => setShowBrainExplorer(false)}
             />
           ) : (

@@ -1,0 +1,6 @@
+{
+  "FraudGraphPaper": "Research notes for the university paper on scale-free graphs in banking fraud.",
+  "Study": "The hub for academic projects, research topics, and university coursework.",
+  "User": "The root hub for all information about the user.",
+  "Assistant": "The assistant hub storing personality parameters, tone guidelines, and user preferences."
+}

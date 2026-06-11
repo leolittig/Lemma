@@ -21,7 +21,6 @@ export default function BrainActivityBlock({ activity }) {
         className="brain-activity-toggle-row"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="brain-activity-icon" aria-hidden="true">🧠</span>
         <span className="brain-activity-label">Brain Activity</span>
         <svg className="brain-activity-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="9 18 15 12 9 6"></polyline>

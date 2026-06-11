@@ -1,0 +1,4 @@
+{
+  "User": "The root hub for all information about the user.",
+  "Assistant": "The assistant hub storing personality parameters, tone guidelines, and user preferences."
+}

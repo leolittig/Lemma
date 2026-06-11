@@ -53,6 +53,7 @@ Then open `http://127.0.0.1:8000`.
 * **Thinking models** — reasoning models (Qwen 3, Gemma 4, …) get a Thinking toggle; the reasoning stream is parsed and shown in a collapsible block above the answer.
 * **Context & token management** — sliders cap the response length and the context (history) sent to the model. The "smart context window" keeps the start, a middle slice, and the most recent turns of an over-long chat, and the UI dims the messages that fell out.
 * **Attachments** — send images and audio to vision/audio-capable models.
+* **Brain (persistent memory)** — a second "brain manager" model maintains a graph of Markdown memory files (`brain/<mode>/`) linked by `[[wikilinks]]`: before each reply it routes the message to relevant memories and injects them (plus the `Assistant.md` persona) into the prompt; after each reply it updates the files in the background. Three modes in Settings choose which model does chat vs. brain work; the Brain Explorer (top bar) visualizes and edits the graph.
 
 ## Project structure
 
@@ -65,20 +66,24 @@ Lemma/
 │   ├── main.py                  Assembles the FastAPI app from the modules below
 │   ├── config.py                ALL paths and tunable constants
 │   ├── schemas.py               Shapes of the JSON request bodies (API contract)
-│   ├── model_manager.py         The loaded model: loading, swapping, unloading
+│   ├── model_manager.py         The loaded model(s): loading, swapping, brain modes
 │   ├── model_catalog.py         Lists models already in the Hugging Face cache
 │   ├── model_downloads.py       Background downloads + progress tracking
 │   ├── context_window.py        Trims long conversations to the token budget
 │   ├── thinking.py              Reasoning (<think>) tag detection/stripping
 │   ├── system_prompt.py         Persists the default system prompt
 │   ├── mlx_compat.py            Workaround for checkpoints with extra tensors
+│   ├── brain/
+│   │   └── instruction_manual.md  Rules the brain manager model follows
 │   ├── storage/
 │   │   ├── database.py          Conversations + messages (SQLite, chats.db)
-│   │   └── uploads.py           Uploaded media files (uploads/)
+│   │   ├── uploads.py           Uploaded media files (uploads/)
+│   │   └── brain.py             Brain memory files: seeding, parsing, validation
 │   └── routes/                  One file per API area, each exposing a router
-│       ├── chat.py              POST /chat — the streamed generation turn
+│       ├── chat.py              POST /chat — routing, generation, brain updates
 │       ├── models.py            /model, /models, /download
 │       ├── conversations.py     /conversations CRUD
+│       ├── brain.py             /api/brain/* — graph, file CRUD, mode switch
 │       ├── files.py             /upload
 │       └── frontend.py          GET / (serves the built frontend)
 ├── src/                         React frontend
@@ -104,9 +109,11 @@ Lemma/
 │   │   ├── BubbleText.jsx       Completed-message markdown + context dimming
 │   │   ├── ThinkingBlock.jsx    Collapsible reasoning panel
 │   │   ├── Composer.jsx         Input row (attach, thinking toggle, send)
+│   │   ├── BrainExplorer.jsx    Interactive memory graph viewer/editor
+│   │   ├── BrainActivityBlock.jsx  Collapsible brain log in assistant bubbles
 │   │   ├── Modal.jsx            Shared dialog shell (overlay + title + close)
 │   │   ├── ToggleSwitch.jsx     Shared on/off switch
-│   │   ├── SettingsModal.jsx    Settings dialog
+│   │   ├── SettingsModal.jsx    Settings dialog (incl. brain mode dropdown)
 │   │   ├── AddModelModal.jsx    "Download a model" dialog
 │   │   └── ModelLoadingOverlay.jsx  Spinner while swapping models
 │   ├── lib/                     Pure helpers (no state)
@@ -149,6 +156,9 @@ Lemma/
 | Add/modify an API endpoint | the matching file in [server/routes/](server/routes/) + [src/api/client.js](src/api/client.js) |
 | Change a request body's fields | [server/schemas.py](server/schemas.py) + [src/api/client.js](src/api/client.js) |
 | Change how messages look or animate | [src/components/MessageBubble.jsx](src/components/MessageBubble.jsx) + [src/styles/messages.css](src/styles/messages.css) |
+| Change brain routing / memory updates | [server/routes/chat.py](server/routes/chat.py) + [server/brain/instruction_manual.md](server/brain/instruction_manual.md) |
+| Change brain file format or seeding | [server/storage/brain.py](server/storage/brain.py) |
+| Change the brain graph UI | [src/components/BrainExplorer.jsx](src/components/BrainExplorer.jsx) + [src/styles/brain-explorer.css](src/styles/brain-explorer.css) |
 | Change markdown / math rendering | [src/lib/markdown.jsx](src/lib/markdown.jsx) |
 | Add a user setting | [src/hooks/useSettings.js](src/hooks/useSettings.js) + [src/components/SettingsModal.jsx](src/components/SettingsModal.jsx) |
 | Change scroll/“follow the stream” behavior | [src/hooks/useAutoScroll.js](src/hooks/useAutoScroll.js) |

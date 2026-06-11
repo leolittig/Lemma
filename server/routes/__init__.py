@@ -3,6 +3,7 @@
     chat.py           POST /chat — generate a streamed model reply.
     models.py         Model selection (/model, /models) and downloads (/download).
     conversations.py  CRUD for the conversation history (/conversations).
+    brain.py          Brain memory graph and file CRUD (/api/brain/*).
     files.py          File uploads (/upload).
     frontend.py       Serving the built frontend (GET /).
 

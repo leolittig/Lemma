@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ..model_manager import manager
+from ..model_manager import manager, generation_lock, acquire_generation_lock
 from ..storage import brain as storage_brain
 
 
@@ -26,6 +26,11 @@ class FileContentRequest(BaseModel):
     content: str
 
 
+class RenameFileRequest(BaseModel):
+    old_filename: str
+    new_filename: str
+
+
 def _resolve_mode(mode: str = None) -> str:
     """Use the provided mode or fall back to the manager's active mode."""
     return mode if mode else manager.active_mode
@@ -33,13 +38,16 @@ def _resolve_mode(mode: str = None) -> str:
 
 @router.post("/api/brain/mode")
 async def set_brain_mode(req: BrainModeRequest):
-    valid_modes = {"everything-12b", "12b-chat-e4b-brain", "e4b-chat-12b-brain"}
+    valid_modes = {"active"}
     if req.mode not in valid_modes:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid mode: {req.mode}"
         )
 
+    # Switching modes loads/unloads models, which must never overlap a
+    # running generation.
+    await acquire_generation_lock()
     try:
         manager.set_mode(req.mode)
         storage_brain.init_brains()
@@ -48,6 +56,8 @@ async def set_brain_mode(req: BrainModeRequest):
             status_code=400,
             content={"status": "error", "message": str(e)}
         )
+    finally:
+        generation_lock.release()
 
     return {"status": "ok", "mode": req.mode, "active_models": list(manager._models.keys())}
 
@@ -154,11 +164,12 @@ async def get_graph(mode: str = Query(default=None)):
                     "connections": parsed.get("connections", []),
                     "created": parsed.get("frontmatter", {}).get("created", ""),
                     "updated": parsed.get("frontmatter", {}).get("updated", ""),
+                    "category": parsed.get("frontmatter", {}).get("category", "leaf"),
                 }
             except Exception:
                 nodes_data[stem] = {
                     "title": "", "description": "", "connections": [],
-                    "created": "", "updated": "",
+                    "created": "", "updated": "", "category": "leaf",
                 }
 
         degrees = {stem: 0 for stem in stems}
@@ -172,16 +183,43 @@ async def get_graph(mode: str = Query(default=None)):
         for stem in stems:
             data = nodes_data[stem]
             label = data["title"] if data["title"] else stem
-            # Auto-detect hubs: nodes with high degree or well-known names
-            is_hub = stem in ("User", "Assistant") or degrees.get(stem, 0) >= 3
             nodes.append({
                 "id": stem,
                 "label": label,
                 "description": data["description"],
                 "val": degrees[stem],
-                "category": "hub" if is_hub else "leaf",
+                "category": data["category"],
                 "created": data["created"],
                 "updated": data["updated"],
             })
 
     return {"nodes": nodes, "links": links}
+
+
+@router.post("/api/brain/rename")
+async def rename_file(
+    req: RenameFileRequest,
+    mode: str = Query(default=None),
+):
+    resolved_mode = _resolve_mode(mode)
+    try:
+        storage_brain.rename_markdown_node(resolved_mode, req.old_filename, req.new_filename)
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/brain/reset")
+async def reset_brain(
+    mode: str = Query(default=None),
+):
+    resolved_mode = _resolve_mode(mode)
+    try:
+        storage_brain.reset_brain(resolved_mode)
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,12 +1,14 @@
 """Owns the loaded MLX model: loading, swapping, unloading, capabilities.
 
-Local inference is memory-bound, so only one model is ever held in memory.
+The active selected model is held in memory and used for both chat and brain management (with separate contexts).
+
 All routes share the single `manager` instance defined at the bottom; check
-`manager.is_loaded` before generating and read `manager.model` /
-`manager.processor` / `manager.path` for the active model.
+`manager.is_loaded` before generating.
 """
 
+import asyncio
 import gc
+import threading
 
 import mlx.core as mx
 from mlx_vlm import load
@@ -14,38 +16,39 @@ from mlx_vlm import load
 from . import config
 from .model_catalog import list_downloaded_models
 
-SMALL_MODEL = "mlx-community/gemma-4-e4b-it-4bit"
-LARGE_MODEL = "mlx-community/gemma-4-12B-it-8bit"
+
+# All MLX work (chat streaming, brain routing, background brain updates, and
+# model loading/unloading) must be serialized: generations run both on the
+# event loop and in background threads, and concurrent Metal generation can
+# crash or corrupt output. Hold this lock around every stream_generate call
+# and every load/unload.
+generation_lock = threading.Lock()
+
+
+async def acquire_generation_lock():
+    """Acquire generation_lock from async code without blocking the event loop
+    (a plain blocking acquire would freeze every other request while a
+    background brain update generates)."""
+    while not generation_lock.acquire(blocking=False):
+        await asyncio.sleep(0.05)
 
 
 class ModelManager:
-    """Holds the active models and manages their lifecycle."""
-
-    SMALL_MODEL = SMALL_MODEL
-    LARGE_MODEL = LARGE_MODEL
+    """Holds the active model and manages its lifecycle."""
 
     def __init__(self):
         self._models = {}  # keys are model paths, values are (model, processor) tuples
-        self.active_mode = "everything-12b"
+        self.active_mode = "active"
 
     @property
     def is_loaded(self) -> bool:
         return len(self._models) > 0
 
-    def get_chat_model_path(self) -> str:
-        """Helper mapping the active mode to the active chat model path."""
-        if self.active_mode == "e4b-chat-12b-brain":
-            return self.SMALL_MODEL
-        elif self.active_mode in ("everything-12b", "12b-chat-e4b-brain"):
-            return self.LARGE_MODEL
-        elif self.active_mode == "custom":
-            if self._models:
-                return list(self._models.keys())[0]
-        return None
-
     @property
     def path(self) -> str:
-        return self.get_chat_model_path()
+        if self._models:
+            return list(self._models.keys())[0]
+        return None
 
     @property
     def model(self):
@@ -64,12 +67,12 @@ class ModelManager:
     def get_model(self, path: str):
         if path in self._models:
             return self._models[path][0]
-        return None
+        return self.model
 
     def get_processor(self, path: str):
         if path in self._models:
             return self._models[path][1]
-        return None
+        return self.processor
 
     def _load_model(self, path: str):
         """Loads a model if not already loaded, checking language_model wrapper."""
@@ -85,62 +88,52 @@ class ModelManager:
         self._models[path] = (model, processor)
 
     def set_mode(self, mode: str):
-        """Validate mode and load/unload required models."""
-        valid_modes = {"everything-12b", "12b-chat-e4b-brain", "e4b-chat-12b-brain"}
-        if mode not in valid_modes:
-            raise ValueError(f"Invalid mode: {mode}")
-
-        if mode == "everything-12b":
-            required = {self.LARGE_MODEL}
-        else:
-            required = {self.LARGE_MODEL, self.SMALL_MODEL}
-
-        for path in required:
-            if path not in self._models:
-                self._load_model(path)
-
-        unloaded_any = False
-        for path in list(self._models.keys()):
-            if path not in required:
-                print(f"Unloading model: {path}")
-                del self._models[path]
-                unloaded_any = True
-
-        if unloaded_any:
-            gc.collect()
-            mx.clear_cache()
-
-        self.active_mode = mode
+        """Validate mode. Since we run single model setups, set_mode is a simple pass-through."""
+        self.active_mode = "active"
 
     def switch_to(self, path: str):
-        """Manually load a custom model path."""
+        """Manually load a single model.
+
+        The current model is freed first so the new one has room to load.
+        If loading fails, the previous configuration is restored so the app
+        stays usable.
+        """
+        prev_paths = list(self._models.keys())
         self._models.clear()
         gc.collect()
         mx.clear_cache()
-        self._load_model(path)
-        self.active_mode = "custom"
+        try:
+            self._load_model(path)
+        except Exception as e:
+            print(f"Error loading model {path}: {e}")
+            if prev_paths:
+                try:
+                    self._load_model(prev_paths[0])
+                except Exception as restore_err:
+                    print(f"Could not restore previous model: {restore_err}")
+            raise e
 
     def load_initial(self):
-        """Try to load `everything-12b` mode initially.
-
-        If loading fails, fallback to loading any downloaded model alphabetical-based check.
-        """
-        try:
-            self.set_mode("everything-12b")
-            return
-        except Exception as e:
-            print(f"Failed to load initial everything-12b mode: {e}")
-
+        """Try to load the preferred/default model initially."""
         available = list_downloaded_models()
-        preferred = available[-1] if available else config.FALLBACK_MODEL
+        preferred = config.DEFAULT_MODEL if config.DEFAULT_MODEL in available else (available[-1] if available else config.DEFAULT_MODEL)
 
         for candidate in [preferred] + [m for m in reversed(available) if m != preferred]:
             try:
-                self._load_model(candidate)
-                self.active_mode = "custom"
+                self.switch_to(candidate)
                 return
-            except Exception as ex:
-                print(f"Failed fallback load of {candidate}: {ex}")
+            except Exception as e:
+                print(f"Failed loading initial candidate {candidate}: {e}")
+
+        # Fallback to config fallback model
+        try:
+            self.switch_to(config.FALLBACK_MODEL)
+            return
+        except Exception as e:
+            print(f"Failed fallback load of {config.FALLBACK_MODEL}: {e}")
+
+        print("WARNING: no model could be loaded — starting without one. "
+              "Pick a compatible model from the UI to begin chatting.")
 
         print("WARNING: no model could be loaded — starting without one. "
               "Pick a compatible model from the UI to begin chatting.")

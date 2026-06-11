@@ -1,0 +1,12 @@
+Starting E2E Brain Memory Graph Simulation and Verification...
+
+==================================================
+RUNNING SCENARIO A: The Professional / Work-heavy Persona
+==================================================
+Resetting active brain...
+Active brain reset completed.
+Creating new conversation: 'Scenario A: Professional'...
+Conversation created with ID: 6a6ea75af4604dba887cd0bccee7d7f2
+
+Sending chat message: 'I just started as a software developer at ACME Corp.'
+Assistant response: 

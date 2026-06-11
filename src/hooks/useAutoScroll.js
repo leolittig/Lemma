@@ -11,7 +11,7 @@
 //   releaseLock()          disengage it (e.g. when opening a thinking block)
 //   notifyContentChanged() nudge the animation after content grows
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 
 // Per-frame catch-up fraction. Lower = slower and smoother. A far-behind
 // jump uses a larger factor so the newest content never drops out of view.
@@ -24,15 +24,16 @@ export function useAutoScroll() {
   const containerRef = useRef(null);
   const isLockedRef = useRef(true);
   const rafRef = useRef(null);
+  const expectedScrollTopRef = useRef(null);
 
-  const stopAnimation = () => {
+  const stopAnimation = useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-  };
+  }, []);
 
-  const animateToBottom = () => {
+  const animateToBottom = useCallback(() => {
     const container = containerRef.current;
     if (!container || !isLockedRef.current) {
       rafRef.current = null;
@@ -44,66 +45,82 @@ export function useAutoScroll() {
 
     // Close enough — settle exactly on the bottom and idle until new content.
     if (Math.abs(distance) < 0.5) {
+      expectedScrollTopRef.current = target;
       container.scrollTop = target;
       rafRef.current = null;
       return;
     }
 
     const factor = distance > container.clientHeight ? SCROLL_EASE_FAR : SCROLL_EASE;
-    container.scrollTop = container.scrollTop + distance * factor;
+    const nextScrollTop = container.scrollTop + distance * factor;
+    expectedScrollTopRef.current = nextScrollTop;
+    container.scrollTop = nextScrollTop;
     rafRef.current = requestAnimationFrame(animateToBottom);
-  };
+  }, []);
 
-  const ensureAnimation = () => {
+  const ensureAnimation = useCallback(() => {
     if (isLockedRef.current && rafRef.current == null) {
       rafRef.current = requestAnimationFrame(animateToBottom);
     }
-  };
+  }, [animateToBottom]);
 
-  const isAtBottom = () => {
+  const isAtBottom = useCallback(() => {
     const container = containerRef.current;
     if (!container) return true;
     return container.scrollHeight - container.scrollTop - container.clientHeight <= BOTTOM_THRESHOLD;
-  };
+  }, []);
 
-  // Programmatic scrolling never fires wheel/touch events, so these handlers
-  // only ever see genuine user gestures — a reliable way to break the lock.
-  const onWheel = (e) => {
-    if (e.deltaY < 0 && isLockedRef.current) {
-      isLockedRef.current = false;
-      stopAnimation();
+  // Wheel and touch moves are now fully handled by the unified onScroll handler,
+  // but we keep the empty handlers here to satisfy the expected interface.
+  const onWheel = useCallback(() => {}, []);
+  const onTouchMove = useCallback(() => {}, []);
+
+  // Re-engage/disengage the lock based on user scroll position.
+  const onScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // If the scroll is programmatic (caused by our own updates), ignore it.
+    if (expectedScrollTopRef.current !== null) {
+      const diff = Math.abs(container.scrollTop - expectedScrollTopRef.current);
+      if (diff < 2.0) {
+        return;
+      }
     }
-  };
 
-  const onTouchMove = () => {
-    if (isLockedRef.current && !isAtBottom()) {
-      isLockedRef.current = false;
-      stopAnimation();
+    if (isAtBottom()) {
+      if (!isLockedRef.current) {
+        isLockedRef.current = true;
+        ensureAnimation();
+      }
+    } else {
+      if (isLockedRef.current) {
+        isLockedRef.current = false;
+        stopAnimation();
+      }
     }
-  };
+  }, [ensureAnimation, isAtBottom, stopAnimation]);
 
-  // Re-engage the lock the instant the user returns to the very bottom.
-  const onScroll = () => {
-    if (!isLockedRef.current && isAtBottom()) {
-      isLockedRef.current = true;
-      ensureAnimation();
-    }
-  };
-
-  const lockToBottom = () => {
+  const lockToBottom = useCallback(() => {
     isLockedRef.current = true;
+    const container = containerRef.current;
+    if (container) {
+      const target = container.scrollHeight - container.clientHeight;
+      expectedScrollTopRef.current = target;
+      container.scrollTop = target;
+    }
     ensureAnimation();
-  };
+  }, [ensureAnimation]);
 
-  const releaseLock = () => {
+  const releaseLock = useCallback(() => {
     isLockedRef.current = false;
     stopAnimation();
-  };
+  }, [stopAnimation]);
 
   // Clean up the animation frame on unmount.
-  useEffect(() => stopAnimation, []);
+  useEffect(() => stopAnimation, [stopAnimation]);
 
-  return {
+  return useMemo(() => ({
     containerRef,
     onWheel,
     onTouchMove,
@@ -111,5 +128,5 @@ export function useAutoScroll() {
     lockToBottom,
     releaseLock,
     notifyContentChanged: ensureAnimation,
-  };
+  }), [onWheel, onTouchMove, onScroll, lockToBottom, releaseLock, ensureAnimation]);
 }

@@ -1,0 +1,195 @@
+Waiting for lock on simulation.lock...
+Starting E2E Brain Memory Graph Simulation and Verification...
+
+==================================================
+RUNNING SCENARIO A: The Professional / Work-heavy Persona
+==================================================
+Resetting active brain...
+Active brain reset completed.
+Creating new conversation: 'Scenario A: Professional'...
+Conversation created with ID: 40afd01bdbb140e48d91f12f25979839
+
+Sending chat message: 'I just started as a software developer at ACME Corp.'
+Assistant response: Congratulations on the new role at ACME Corp. Starting a position as a software developer is an exciting milestone.
+
+To help you hit the ground running, here are a few common priorities for your first few weeks:
+
+1. Environment Setup: Ensure you have all the necessary permissions, hardware, and software licenses configured. Familiarize yourself with the internal deployment pipelines and version control workflows.
+2. Codebase Exploration: Start by reading the documentation and exploring the existing repositories. Understanding the established patterns and architecture is often more important than making immediate changes.
+3. Documentation Review: Look for internal wikis or README files. These usually contain the history of why certain technical decisions were made.
+4. Communication: Identify who the key stakeholders are and understand the team's communication cadence, whether it is through stand-ups, Slack, or Jira.
+
+Is there a specific programming language or technology stack they have you working with?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208399.3614984 to 1781208449.1061785).
+
+Sending chat message: 'I have a database migration assignment next week.'
+Assistant response: A database migration is a significant task, especially for a new developer at ACME Corp. Since this involves moving or altering live data, accuracy and safety are your primary objectives.
+
+To prepare for next week, you may want to focus on the following areas:
+
+1. Data Mapping and Analysis: Thoroughly map the source schema to the target schema. Identify any data type discrepancies, required transformations, or fields that need to be concatenated or split.
+2. Validation Strategy: Plan for how you will verify the integrity of the data post-migration. This usually involves row counts, checksums, and sampling specific records to ensure they transitioned correctly.
+3. Backup and Rollback Plan: Ensure there is a verified backup of the source data before the migration begins. You must also have a clear, tested procedure to revert the changes if the migration fails or produces unexpected results.
+4. Performance Testing: If the dataset is large, consider how the migration will impact system performance. You might need to batch the migration or schedule it during off-peak hours to avoid downtime.
+5. Dry Runs: If possible, perform the migration in a staging environment that mirrors production as closely as possible. This allows you to catch errors in your scripts without risking real data.
+
+Do you know which database systems you will be migrating between, and do you have a preferred migration tool or script language for the task?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208449.1061785 to 1781208503.5583937).
+
+Sending chat message: 'The database migration deadline is June 20th.'
+Assistant response: I have updated your calendar record. The database migration assignment for ACME Corp is now flagged for completion by June 20th.
+
+Since the deadline is approaching quickly, you may want to prioritize the following steps this week:
+
+1.  **Environment Verification**: Confirm you have access to both the source and target environments and that you have the necessary permissions to execute migration scripts.
+2.  **Script Preparation**: Begin drafting your migration scripts. If you are using a specific framework (like Liquibase or Flyway) or custom SQL/Python scripts, start with a small subset of data to test the logic.
+3.  **Stakeholder Sync**: Since you are new to the team, it might be helpful to schedule a brief check-in with your lead to review your migration plan and ensure it aligns with their expectations.
+4.  **Drafting the Rollback**: Documenting the "Plan B" early will give you more confidence. If something goes wrong on the migration day, you need to know exactly how to restore the previous state.
+
+Would you like to break this down into a daily task list or create a checklist for the migration steps?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208503.5583937 to 1781208561.4621522).
+
+Sending chat message: 'My birthday is January 15th.'
+Assistant response: I have recorded your birthday as January 15th in your profile.
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208561.4621522 to 1781208608.391032).
+
+==================================================
+RUNNING SCENARIO B: The Student / Academic Persona
+==================================================
+Resetting active brain...
+Active brain reset completed.
+Creating new conversation: 'Scenario B: Academic'...
+Conversation created with ID: 12f14c15b8db4da0823d527c8d282ef1
+
+Sending chat message: 'I study computer science at the university.'
+Assistant response: That is a demanding but rewarding field of study. Computer science provides a strong foundation for understanding how modern technology functions, from software engineering and algorithms to artificial intelligence and systems architecture.
+
+Are you currently focusing on a specific area of interest, such as web development, machine learning, cybersecurity, or data structures?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208608.3968966 to 1781208644.6549163).
+
+Sending chat message: 'I have two papers to write: Paper 1 on AI Ethics, and Paper 2 on Compilers.'
+Assistant response: Those are two very different but equally significant topics. One focuses on the philosophical and societal implications of technology, while the other deals with the low-level mechanics of how code is executed.
+
+To help you organize your thoughts, here is a breakdown of how you might approach each:
+
+**Paper 1: AI Ethics**
+Since this is a subjective and rapidly evolving field, you will need to establish a clear scope. You might consider focusing on one of the following:
+*   **Algorithmic Bias:** How historical data can perpetuate discrimination in hiring, policing, or lending.
+*   **Transparency and Explainability:** The "black box" problem where it is difficult to understand why a deep learning model made a specific decision.
+*   **Automation and Labor:** The socioeconomic impact of AI replacing human roles across different industries.
+*   **Alignment Theory:** How to ensure that artificial general intelligence (AGI) goals remain compatible with human values.
+
+**Paper 2: Compilers**
+This paper will likely be more technical and structured. Depending on your professor's requirements, you could focus on:
+*   **Optimization Techniques:** How compilers perform constant folding, loop unrolling, or register allocation to improve performance.
+*   **Intermediate Representations (IR):** The role of IRs (like LLVM IR) in bridging the gap between high-level source code and machine code.
+*   **Just-In-Time (JIT) vs. Ahead-Of-Time (AOT) Compilation:** A comparative analysis of how languages like Java/Python versus C++ handle code execution.
+*   **Type Checking and Static Analysis:** How compilers identify errors before the program even runs.
+
+Would you like to brainstorm a specific thesis or outline for either of these papers?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208644.6549163 to 1781208710.6686592).
+
+Sending chat message: 'AI Ethics is due on June 18th, and Compilers is due on June 22nd.'
+Assistant response: With your deadlines approaching quickly, you have a tight window to produce both papers. Since you have about a week until the first deadline and another few days after that for the second, a structured timeline will be essential.
+
+Here is a suggested plan to manage your workload:
+
+**Phase 1: AI Ethics (Focus until June 18th)**
+Given that this is your first deadline, you should dedicate the majority of your remaining time here.
+*   **Days 1-2 (Now - June 13th):** Finalize your specific topic and research. Collect your primary sources and gather your core arguments.
+*   **Days 3-4 (June 14th - 15th):** Drafting. Focus on getting your thoughts onto the page. You can refine the structure as you go, but the priority is the content.
+*   **Day 5 (June 16th):** Revision and formatting. Check for clarity, ensure your citations are correct, and polish the tone.
+*   **Day 6 (June 17th):** Final review and submission.
+
+**Phase 2: Compilers (June 18th - June 22nd)**
+Once the AI Ethics paper is submitted, you will have a focused 4-day sprint for the Compilers paper.
+*   **Day 1 (June 18th):** Outline and technical deep-dive. Since this is a technical topic, ensure you have your diagrams or logic flows mapped out.
+*   **Day 2 (June 19th):** Core drafting of technical sections (e.g., IR analysis or Optimization methods).
+*   **Day 3 (June 20th):** Completion of the draft and assembly of any technical data/code examples.
+*   **Day 4 (June 21st):** Final Polish. Review technical accuracy and meet your university's formatting requirements before the June 22nd deadline.
+
+Which of the two papers do you feel more prepared for at this moment? I can help you start outlining the one you find more challenging first.
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208710.6686592 to 1781208790.652937).
+
+==================================================
+RUNNING SCENARIO C: The Hobbyist / Social Persona
+==================================================
+Resetting active brain...
+Active brain reset completed.
+Creating new conversation: 'Scenario C: Hobbyist'...
+Conversation created with ID: 7d317a06b7094b7791a126a04a8377da
+
+Sending chat message: 'I love birdwatching and hiking in my free time.'
+Assistant response: That sounds like a great way to spend your free time. Birdwatching and hiking complement each other well since many of the best bird species are found in diverse trail environments.
+
+Do you have a specific type of bird you are currently trying to spot, or do you prefer exploring different types of terrain like forests, wetlands, or mountains?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208790.6579695 to 1781208827.2197158).
+
+Sending chat message: 'I have a birdwatching trip scheduled.'
+Assistant response: That sounds like an exciting plan. Since your calendar hub is active, would you like me to record the details of this trip for you?
+
+If so, please let me know the date, location, and any specific goals you have for the excursion, such as a particular species you are hoping to see.
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208827.2197158 to 1781208863.0130942).
+
+Sending chat message: 'The trip is on July 5th.'
+Assistant response: I have noted that your birdwatching trip is scheduled for July 5th.
+
+Would you like to add a specific location or a list of target species for that day to your records?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208863.0130942 to 1781208894.9943213).
+
+Generating comprehensive audit report at /Users/leolittig/Development/Lemma/brain_audit_report.md...
+Report written successfully to /Users/leolittig/Development/Lemma/brain_audit_report.md.
+
+==================================================
+SIMULATION COMPLETED SUMMARY:
+==================================================
+
+Scenario A: The Professional / Work-heavy Persona:
+  Final Adjacency List:
+    Assistant -> []
+    Calendar -> ['Migration', 'User']
+    Migration -> ['Work', 'Calendar']
+    User -> ['Work', 'Calendar']
+    Work -> ['User']
+  ✅ All checks passed.
+
+Scenario B: The Student / Academic Persona:
+  Final Adjacency List:
+    Assistant -> []
+    Calendar -> ['User', 'Paper1', 'Paper2']
+    Paper1 -> ['University', 'Calendar']
+    Paper2 -> ['University', 'Calendar']
+    University -> ['User']
+    User -> ['University']
+  ✅ All checks passed.
+
+Scenario C: The Hobbyist / Social Persona:
+  Final Adjacency List:
+    Assistant -> []
+    BirdTrip -> ['Hobbies', 'Calendar']
+    Calendar -> ['BirdTrip']
+    Hobbies -> ['User']
+    User -> ['Hobbies']
+  ✅ All checks passed.
+
+All simulations completed and topology verified successfully.

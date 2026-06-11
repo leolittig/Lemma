@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from .. import model_downloads
 from ..model_catalog import list_downloaded_models
-from ..model_manager import manager
+from ..model_manager import manager, generation_lock, acquire_generation_lock
 from ..schemas import DownloadRequest, ModelSelectRequest
 from ..system_prompt import save_default_system_prompt
 
@@ -32,11 +32,15 @@ async def select_model(sel: ModelSelectRequest):
     if len(sel.model) > 255:
         return JSONResponse(status_code=400, content={"status": "error", "message": "Model path is too long."})
 
+    # Loading/unloading models must never overlap a running generation.
+    await acquire_generation_lock()
     try:
         manager.switch_to(sel.model)
     except Exception as e:
-        # switch_to already restored the previous model (when possible).
+        # switch_to already restored the previous configuration (when possible).
         return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+    finally:
+        generation_lock.release()
 
     # Conversation state is intentionally NOT touched here — switching models
     # keeps the active chat, which is re-templated for the new model on the

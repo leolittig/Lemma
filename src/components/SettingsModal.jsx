@@ -61,7 +61,7 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
     contextSize, setContextSize,
     maxTokens, setMaxTokens,
     smartContext, setSmartContext,
-    brainMode, setBrainMode,
+    brainEnabled, setBrainEnabled,
   } = settings;
 
   // Keep the instructions textarea sized to its content, also right after the
@@ -76,6 +76,18 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
   const ctxIndex = stepIndex(CTX_STEPS, contextSize, CTX_DEFAULT_INDEX);
   const maxTokensIndex = stepIndex(MAX_TOKENS_STEPS, maxTokens, MAX_TOKENS_DEFAULT_INDEX);
   const currentMaxTokens = MAX_TOKENS_STEPS[maxTokensIndex];
+
+  const handleResetBrain = async () => {
+    const confirmReset = window.confirm("Are you sure you want to completely reset the brain? This will delete all custom memories and restore default starting hubs.");
+    if (!confirmReset) return;
+    try {
+      await api.resetBrain("active");
+      alert("Brain memory successfully reset.");
+    } catch (err) {
+      console.error("Failed to reset brain:", err);
+      alert("Failed to reset brain. See console for details.");
+    }
+  };
 
   return (
     <Modal title="Settings" open={open} onClose={onClose}>
@@ -130,24 +142,41 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
         <div className="settings-section-divider" />
         <label className="settings-section-title">Brain Configuration</label>
         <div className="settings-field">
-          <div className="settings-label-row">
-            <label className="settings-label">Brain Mode</label>
+          <div className="settings-toggle-row">
+            <label className="settings-label">Enable memory brain</label>
+            <ToggleSwitch
+              on={brainEnabled}
+              onToggle={() => setBrainEnabled((v) => !v)}
+              label="enable memory brain"
+            />
           </div>
-          <select
-            id="brain-mode-select"
-            className="settings-select"
-            value={brainMode}
-            onChange={(e) => {
-              const newMode = e.target.value;
-              setBrainMode(newMode);
-              api.setBrainMode(newMode).catch(console.error);
-            }}
-          >
-            <option value="everything-12b">Everything 12B (Single Model)</option>
-            <option value="12b-chat-e4b-brain">12B Chat + e4b Brain Manager</option>
-            <option value="e4b-chat-12b-brain">e4b Chat + 12B Brain Manager</option>
-          </select>
         </div>
+        {brainEnabled && (
+          <div className="settings-field">
+            <div className="settings-toggle-row">
+              <label className="settings-label" style={{ color: '#ef4444' }}>Clear and reset brain</label>
+              <button
+                className="settings-action-btn danger"
+                onClick={handleResetBrain}
+                style={{
+                  padding: '0.4rem 0.9rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  color: '#ef4444',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: 'none',
+                  borderRadius: '999px',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                }}
+                onMouseOver={(e) => e.target.style.background = 'rgba(239, 68, 68, 0.16)'}
+                onMouseOut={(e) => e.target.style.background = 'rgba(239, 68, 68, 0.08)'}
+              >
+                Reset Brain
+              </button>
+            </div>
+          </div>
+        )}
         <div className="settings-actions">
           <button className="settings-action-btn secondary" onClick={onReloadModel}>
             Save and reload

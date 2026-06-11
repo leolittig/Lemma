@@ -1,0 +1,75 @@
+Loading model: mlx-community/gemma-4-12B-it-8bit
+Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]Fetching 10 files: 100%|██████████| 10/10 [00:00<00:00, 163840.00it/s]
+INFO:     Started server process [34212]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:53173 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53174 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53175 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53177 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53184 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53187 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53190 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53194 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53198 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53200 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53202 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53203 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53204 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53206 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53212 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53214 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53217 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53219 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53224 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53225 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53226 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53227 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53229 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53231 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53233 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53235 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54516 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54517 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54518 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54537 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54538 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54531 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54539 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54550 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54559 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54545 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54566 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54567 - "GET /api/brain/graph HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54568 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54573 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54574 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54575 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54569 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54588 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54589 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54581 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54584 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54590 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54604 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54605 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54608 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54609 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54610 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54619 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54621 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54631 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54632 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54633 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54622 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54648 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54649 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54650 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54656 - "POST /api/brain/reset?mode=active HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54657 - "POST /conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54658 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54663 - "POST /api/brain/mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54665 - "POST /chat HTTP/1.1" 200 OK
+/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-2jr7h591'}
+  warnings.warn(

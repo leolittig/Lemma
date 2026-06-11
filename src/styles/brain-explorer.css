@@ -1,6 +1,5 @@
 /* The Brain Explorer (components/BrainExplorer.jsx) — full-screen interactive
-   force-directed graph with a slide-out file editor pane. Dark theme with
-   vibrant gradients. */
+   force-directed graph with a slide-out file editor pane. Light theme. */
 
 .brain-explorer {
   position: relative;
@@ -8,7 +7,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #0f0f1a;
+  background: #fafafc;
   overflow: hidden;
   animation: brainExplorerFadeIn 0.5s ease-out;
 }
@@ -27,7 +26,7 @@
 }
 
 .brain-explorer-loading-text {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(30, 41, 59, 0.6);
   font-size: 1rem;
   font-weight: 600;
   animation: thinkingPulse 1.4s ease-in-out infinite;
@@ -46,22 +45,23 @@ button.brain-explorer-close {
   height: auto;
   padding: 0.5rem 0.9rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: rgba(30, 41, 59, 0.85);
   font-family: inherit;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: background 0.3s ease, color 0.3s ease;
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 button.brain-explorer-close:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: #ffffff;
+  color: #1e293b;
+  border-color: rgba(0, 0, 0, 0.15);
   transform: none;
 }
 
@@ -90,13 +90,31 @@ button.brain-explorer-close:active {
 
 /* Editor pane (slides in from right). */
 .brain-editor-pane {
-  width: 380px;
+  position: relative;
   flex-shrink: 0;
-  background: #13131f;
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  background: #ffffff;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.03);
   animation: brainEditorSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brain-editor-resizer {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 15;
+  background: transparent;
+  transition: background-color 0.2s;
+}
+
+.brain-editor-resizer:hover,
+.brain-editor-resizer:active {
+  background-color: rgba(124, 111, 196, 0.3);
 }
 
 @keyframes brainEditorSlideIn {
@@ -109,13 +127,186 @@ button.brain-explorer-close:active {
   align-items: center;
   justify-content: space-between;
   padding: 0.9rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.brain-editor-filename-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
+button.brain-editor-rename-toggle {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: rgba(30, 41, 59, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button.brain-editor-rename-toggle:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #7c6fc4;
+  transform: none;
+}
+
+.brain-editor-rename-form {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  margin-right: 0.5rem;
+}
+
+input.brain-editor-rename-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+  outline: none;
+  background: #ffffff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input.brain-editor-rename-input:focus {
+  border-color: #7c6fc4;
+  box-shadow: 0 0 0 2px rgba(124, 111, 196, 0.12);
+}
+
+button.brain-editor-rename-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button.brain-editor-rename-btn.confirm {
+  color: #10b981;
+}
+
+button.brain-editor-rename-btn.confirm:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+button.brain-editor-rename-btn.cancel {
+  color: #ef4444;
+}
+
+button.brain-editor-rename-btn.cancel:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.brain-editor-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.02);
+  padding: 0.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+button.brain-editor-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 6px;
+  padding: 0.4rem 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(30, 41, 59, 0.5);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button.brain-editor-tab-btn:hover {
+  background: rgba(0, 0, 0, 0.02);
+  color: rgba(30, 41, 59, 0.8);
+  transform: none;
+}
+
+button.brain-editor-tab-btn.active {
+  background: #ffffff;
+  color: #7c6fc4;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Formatted markdown preview */
+.brain-editor-preview {
+  overflow-y: auto;
+  user-select: text;
+  text-align: left;
+}
+
+.brain-editor-preview p {
+  margin-bottom: 0.8rem;
+}
+
+.brain-editor-preview h1,
+.brain-editor-preview h2,
+.brain-editor-preview h3,
+.brain-editor-preview h4 {
+  margin-top: 1.2rem;
+  margin-bottom: 0.5rem;
+  color: #1e293b;
+}
+
+.brain-editor-preview ul,
+.brain-editor-preview ol {
+  margin-left: 1.2rem;
+  margin-bottom: 0.8rem;
+}
+
+.brain-editor-preview li {
+  margin-bottom: 0.3rem;
+}
+
+.brain-editor-preview code {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.brain-editor-preview pre {
+  background: rgba(0, 0, 0, 0.03);
+  padding: 0.75rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 0.8rem;
+}
+
+.brain-editor-preview pre code {
+  background: transparent;
+  padding: 0;
 }
 
 .brain-editor-filename {
   font-size: 0.9rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(30, 41, 59, 0.9);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -125,10 +316,10 @@ button.brain-editor-close-btn {
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.04);
   border: none;
   box-shadow: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(30, 41, 59, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -137,8 +328,8 @@ button.brain-editor-close-btn {
 }
 
 button.brain-editor-close-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.08);
+  color: #1e293b;
   transform: none;
 }
 
@@ -149,13 +340,13 @@ button.brain-editor-close-btn:active {
 .brain-editor-content {
   flex: 1;
   margin: 0;
-  padding: 1rem;
+  padding: 1.2rem;
   border: none;
   border-radius: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.8);
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 0.85rem;
+  color: rgba(30, 41, 59, 0.85);
+  font-family: inherit;
+  font-size: 0.95rem;
   line-height: 1.6;
   resize: none;
   outline: none;
@@ -164,47 +355,111 @@ button.brain-editor-close-btn:active {
   overflow-y: auto;
 }
 
+textarea.brain-editor-content {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+}
+
 .brain-editor-content:focus {
   border-color: transparent;
 }
 
 .brain-editor-actions {
   padding: 0.75rem 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
   display: flex;
   justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+button.brain-editor-delete-btn {
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+button.brain-editor-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #dc2626;
+}
+
+button.brain-editor-delete-btn:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 button.brain-editor-save-btn {
   width: auto;
   height: auto;
+  min-width: 90px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   padding: 0.5rem 1.2rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  background: linear-gradient(135deg, #7c6fc4, #3b82f6);
   color: #fff;
   font-family: inherit;
   font-size: 0.85rem;
   font-weight: 600;
   border: none;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
-  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(124, 111, 196, 0.2);
+  transition: opacity 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
-button.brain-editor-save-btn:hover {
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+button.brain-editor-save-btn:hover:not(:disabled) {
+  box-shadow: 0 6px 16px rgba(124, 111, 196, 0.35);
   transform: translateY(-1px);
 }
 
-button.brain-editor-save-btn:active {
+button.brain-editor-save-btn:active:not(:disabled) {
   transform: translateY(1px) scale(0.98);
 }
 
 button.brain-editor-save-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+button.brain-editor-reset-btn {
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+button.brain-editor-reset-btn:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.16);
+  color: #d97706;
+}
+
+button.brain-editor-reset-btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+button.brain-editor-reset-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
 
 /* Settings modal: section divider + title for Brain Configuration. */
@@ -224,65 +479,42 @@ button.brain-editor-save-btn:disabled {
   margin-bottom: 0.75rem;
 }
 
-/* The brain-mode dropdown in the settings modal. */
-.settings-select {
-  width: 100%;
-  padding: 0.65rem 1rem;
-  border-radius: 0.65rem;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
-  color: #1a1a1a;
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 500;
-  outline: none;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.9rem center;
-  background-size: 12px;
-  padding-right: 2.4rem;
-}
-
-.settings-select:focus {
-  border-color: rgba(0, 122, 255, 0.45);
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.08);
-}
-
 /* Brain toggle button in the top bar. */
 button.brain-toggle-btn {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 50%;
+  width: auto;
+  height: 2.1rem;
+  border-radius: 999px;
   background: transparent;
   box-shadow: none;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: rgba(30, 41, 59, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  padding: 0;
-  font-size: 1.1rem;
+  padding: 0 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
   line-height: 1;
   position: absolute;
   right: 4.5rem;
-  transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 button.brain-toggle-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.04);
+  color: #1e293b;
+  border-color: rgba(0, 0, 0, 0.15);
   transform: none;
 }
 
 button.brain-toggle-btn:active {
-  background: rgba(0, 0, 0, 0.1);
-  transform: scale(0.95);
+  transform: scale(0.96);
 }
 
 button.brain-toggle-btn.active {
-  background: rgba(124, 111, 196, 0.12);
+  background: rgba(124, 111, 196, 0.1);
+  color: #7c6fc4;
+  border-color: rgba(124, 111, 196, 0.3);
 }

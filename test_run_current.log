@@ -1,0 +1,191 @@
+Waiting for lock on simulation.lock...
+Starting E2E Brain Memory Graph Simulation and Verification...
+
+==================================================
+RUNNING SCENARIO A: The Professional / Work-heavy Persona
+==================================================
+Resetting active brain...
+Active brain reset completed.
+Creating new conversation: 'Scenario A: Professional'...
+Conversation created with ID: 782afe2c54fc4252b652bea90fbb8252
+
+Sending chat message: 'I just started as a software developer at ACME Corp.'
+Assistant response: Congratulations on the new role at ACME Corp. Starting as a software developer is an exciting milestone.
+
+To help you settle in during your first few weeks, here are a few common priorities you might encounter:
+
+1. Environment Setup: You will likely spend the first few days configuring your local development environment, installing dependencies, and gaining access to version control systems like Git.
+2. Codebase Familiarization: Take time to read through the existing documentation and explore the main repositories. Understanding how the current architecture is structured is often more important than writing new code initially.
+3. Development Workflow: Pay close attention to the team's specific processes, such as sprint cycles, code review standards, and deployment pipelines.
+4. Knowledge Building: Identify the primary tech stack used by your team. If there are internal tools or proprietary frameworks, prioritize learning those as they will be central to your daily tasks.
+
+Is there a specific programming language or technology stack you will be working with?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781208964.0347023 to 1781209036.3501432).
+
+Sending chat message: 'I have a database migration assignment next week.'
+Assistant response: Since you have a database migration assignment due next week on June 18th, it is a good idea to begin preparing for it immediately. Database migrations are critical tasks that require careful planning to ensure data integrity and minimal downtime.
+
+Here are some steps you can take to prepare:
+
+**1. Understand the Scope**
+Confirm exactly what is changing. Are you adding new columns, changing data types, renaming tables, or moving data from one system to another? Understanding the "why" behind the migration will help you anticipate potential side effects.
+
+**2. Review the Existing Schema**
+Study the current database ERD (Entity Relationship Diagram) and schema. Identify dependencies—specifically, which services or applications will be affected if a table structure changes.
+
+**3. Backup and Safety Procedures**
+Before any migration, ensure there is a robust rollback plan. Ask your team about their standard procedure for taking snapshots or backups before running migration scripts. You should know how to revert the changes if something goes wrong.
+
+**4. Test in a Staging Environment**
+Never run a migration on production data first. Request access to a staging or development database that mirrors the production environment as closely as possible. Run your scripts there and verify that the data remains consistent.
+
+**5. Performance Considerations**
+If you are dealing with large datasets, consider how the migration will impact performance. Queries that are fast on a small test set can cause significant locks or timeouts on a production database with millions of rows.
+
+**6. Documentation**
+Document every step of your process. Keep a log of the scripts you ran, the expected results, and any issues you encountered during testing.
+
+Do you know which database system (e.g., PostgreSQL, MySQL, MongoDB) or migration tool (e.g., Liquibase, Flyway, Alembic) ACME Corp uses?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209036.3501432 to 1781209092.4015145).
+
+Sending chat message: 'The database migration deadline is June 20th.'
+Assistant response: I have updated your records to reflect the new deadline. The migration assignment is now marked for June 20th.
+
+Given that the deadline has moved from the 18th to the 20th, you have a bit more breathing room, but it remains a high-priority task. You should still aim to complete your staging tests and documentation well before that date to allow for any necessary troubleshooting or final approvals from your team.
+
+Would you like to break down the preparation steps into a daily schedule leading up to the 20th?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209092.4015145 to 1781209149.8268917).
+
+Sending chat message: 'My birthday is January 15th.'
+Assistant response: I have noted your birthday as January 15th. This has been added to your core profile in the user hub for future reference.
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209149.8269331 to 1781209197.2414067).
+
+==================================================
+RUNNING SCENARIO B: The Student / Academic Persona
+==================================================
+Resetting active brain...
+Active brain reset completed.
+Creating new conversation: 'Scenario B: Academic'...
+Conversation created with ID: 69888eb3fb734a1fa03cd3f84a30e59e
+
+Sending chat message: 'I study computer science at the university.'
+Assistant response: That is a demanding but rewarding field of study. Computer science covers a vast range of topics, from foundational theory and algorithms to practical applications like software engineering, artificial intelligence, and cybersecurity.
+
+What specific areas of computer science are you most interested in, or what classes are you currently taking?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209197.2453485 to 1781209233.4512367).
+
+Sending chat message: 'I have two papers to write: Paper 1 on AI Ethics, and Paper 2 on Compilers.'
+Assistant response: Those are two distinct but equally important pillars of computer science. One focuses on the sociotechnical implications of technology, while the other focuses on the fundamental engineering of how code is executed.
+
+To help you structure your thoughts, here is a breakdown of how you might approach each:
+
+**Paper 1: AI Ethics**
+Since this is a philosophical and practical subject, you will need to decide on a specific lens. Common themes include:
+*   **Algorithmic Bias:** How training data can perpetuate systemic racism or sexism.
+*   **Transparency and Explainability:** The "black box" problem where even developers cannot explain why an AI reached a specific decision.
+*   **Job Displacement:** The economic impact of automation on the labor market.
+*   **Privacy and Surveillance:** The ethics of facial recognition and mass data collection.
+
+**Paper 2: Compilers**
+This is a much more technical, systems-oriented paper. Depending on your requirements, you might focus on:
+*   **Optimization Techniques:** How compilers perform constant folding, dead code elimination, or loop unrolling.
+*   **LLVM Infrastructure:** Analyzing how modern toolchains use intermediate representations (IR).
+*   **Just-In-Time (JIT) vs. Ahead-Of-Time (AOT) Compilation:** Comparing techniques used in languages like Java/C# versus C++.
+*   **Type Checking:** The theory behind static vs. dynamic type systems during the semantic analysis phase.
+
+Do you have specific prompts for either of these papers yet, or are you still in the brainstorming phase?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209233.4512367 to 1781209296.7287672).
+
+Sending chat message: 'AI Ethics is due on June 18th, and Compilers is due on June 22nd.'
+Assistant response: Given your deadlines, you have a very tight schedule. Here is a summary of your upcoming timeline:
+
+*   **Paper 1 (AI Ethics):** Due June 18th (approx. 7 days from now)
+*   **Paper 2 (Compilers):** Due June 22nd (approx. 11 days from now)
+
+Since the AI Ethics paper is due first and involves more qualitative research and synthesis, it might be best to prioritize focusing on its structure and drafting immediately. Once that is submitted or nearly finished, you can shift your full attention to the technical requirements of the Compilers paper.
+
+Would you like to start by outlining the specific themes for the AI Ethics paper, or would you prefer to create a study schedule to manage both over the next week?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209296.729767 to 1781209362.1837485).
+
+==================================================
+RUNNING SCENARIO C: The Hobbyist / Social Persona
+==================================================
+Resetting active brain...
+Active brain reset completed.
+Creating new conversation: 'Scenario C: Hobbyist'...
+Conversation created with ID: 662cb98b6ebb424d8eda157d9457ecda
+
+Sending chat message: 'I love birdwatching and hiking in my free time.'
+Assistant response: That sounds like a rewarding way to spend your free time. Combining birdwatching with hiking allows you to explore different ecosystems while observing wildlife in their natural habitats.
+
+Do you have any specific types of birds you are currently tracking, or are there particular terrains you prefer to hike, such as forests, coastal areas, or mountains?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209362.1891603 to 1781209398.5746484).
+
+Sending chat message: 'I have a birdwatching trip scheduled.'
+Assistant response: That sounds like an exciting plan. Since you have a trip scheduled, are you heading to a specific location or a known birding hotspot?
+
+If you would like, I can help you organize some details for the trip, such as making a checklist of gear, identifying specific species to look for in that region, or tracking the dates if you would like me to note them in your calendar.
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209398.5746484 to 1781209436.9961407).
+
+Sending chat message: 'The trip is on July 5th.'
+Assistant response: I have updated your calendar to reflect that your birdwatching trip is scheduled for July 5th.
+
+Is there anything else you would like to add to this entry, such as the specific location, the people you are going with, or a list of gear you need to pack?
+Waiting 1.5s for background thread to start...
+Querying POST /api/brain/mode to block until generation lock is released...
+map.json updated (mtime changed from 1781209436.9961407 to 1781209480.5348403).
+
+Generating comprehensive audit report at /Users/leolittig/Development/Lemma/brain_audit_report.md...
+Report written successfully to /Users/leolittig/Development/Lemma/brain_audit_report.md.
+
+==================================================
+SIMULATION COMPLETED SUMMARY:
+==================================================
+
+Scenario A: The Professional / Work-heavy Persona:
+  Final Adjacency List:
+    Assistant -> []
+    Calendar -> ['Migration', 'User']
+    Migration -> ['Work', 'Calendar']
+    User -> ['Work', 'Calendar']
+    Work -> ['User']
+  ✅ All checks passed.
+
+Scenario B: The Student / Academic Persona:
+  Final Adjacency List:
+    Assistant -> []
+    Calendar -> ['Paper1', 'Paper2']
+    Paper1 -> ['University', 'Calendar']
+    Paper2 -> ['University', 'Calendar']
+    University -> ['User']
+    User -> ['University']
+  ✅ All checks passed.
+
+Scenario C: The Hobbyist / Social Persona:
+  Final Adjacency List:
+    Assistant -> []
+    BirdTrip -> ['Hobbies', 'Calendar']
+    Calendar -> ['BirdTrip']
+    Hobbies -> ['User']
+    User -> ['Hobbies']
+  ✅ All checks passed.
+
+All simulations completed and topology verified successfully.

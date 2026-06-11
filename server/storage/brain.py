@@ -27,6 +27,7 @@ def init_brains():
             user_content = f"""---
 created: {now_str}
 updated: {now_str}
+category: hub
 ---
 
 # User
@@ -37,7 +38,6 @@ The root hub for all information about the user.
 - [{now_str}] **System**: Memory graph initialized.
 
 ## Connections & Links
-- Related: [[Assistant]]
 """
             user_file.write_text(user_content, encoding="utf-8")
             
@@ -48,6 +48,7 @@ The root hub for all information about the user.
             assistant_content = f"""---
 created: {now_str}
 updated: {now_str}
+category: hub
 ---
 
 # Assistant
@@ -58,16 +59,38 @@ The assistant hub storing personality parameters, tone guidelines, and user pref
 - [{now_str}] **System**: Assistant memory profile initialized.
 
 ## Connections & Links
-- Related: [[User]]
 """
             assistant_file.write_text(assistant_content, encoding="utf-8")
 
+        # Seed Calendar.md
+        calendar_file = path / "Calendar.md"
+        if not calendar_file.exists():
+            now_str = datetime.now().strftime(DATETIME_FORMAT)
+            calendar_content = f"""---
+created: {now_str}
+updated: {now_str}
+category: hub
+---
+
+# Calendar
+
+Core hub for deadlines, commitments, assignments, events, and birthdays.
+
+## Content / Logs
+- [{now_str}] **System**: Calendar initialized.
+
+## Connections & Links
+"""
+            calendar_file.write_text(calendar_content, encoding="utf-8")
+
         # Build/rebuild map.json
-        _rebuild_map(path)
+        rebuild_map(path)
 
 
-def _rebuild_map(brain_dir):
-    """Build brain/map.json from the current .md files in a directory."""
+def rebuild_map(brain_dir):
+    """Build map.json (filename -> short description) from a brain directory's
+    .md files. It's the compact index the routing model sees, so it must be
+    rebuilt whenever files change."""
     import json as _json
     brain_map = {}
     for fpath in brain_dir.glob("*.md"):
@@ -104,7 +127,7 @@ def clean_wikilink(target: str) -> str:
 
 def parse_markdown_node(content: str) -> dict:
     """Parses markdown contents and returns a structured node dictionary."""
-    frontmatter = {"created": "", "updated": ""}
+    frontmatter = {"created": "", "updated": "", "category": "leaf"}
     title = ""
     description = ""
     logs = []
@@ -121,7 +144,7 @@ def parse_markdown_node(content: str) -> dict:
                 key, val = line.split(":", 1)
                 key = key.strip()
                 val = val.strip().strip("'\"")
-                if key in ("created", "updated"):
+                if key in ("created", "updated", "category"):
                     frontmatter[key] = val
 
     # 2. Extract H1 Title and Description
@@ -241,8 +264,92 @@ def save_markdown_node(mode: str, filename: str, content: str):
     brain_dir = get_brain_dir(mode).resolve()
     target_path = (brain_dir / filename).resolve()
     
-    # Path traversal protection
-    if not target_path.is_relative_to(brain_dir):
-        raise ValueError("Directory traversal attempt detected in filename.")
-        
     target_path.write_text(content, encoding="utf-8")
+
+
+def rename_markdown_node(mode: str, old_filename: str, new_filename: str):
+    """Renames a markdown node, updates its H1 title if it matches, and updates wikilinks pointing to it in all other nodes."""
+    if "/" in old_filename or "\\" in old_filename or "/" in new_filename or "\\" in new_filename:
+        raise ValueError("Subdirectories are not allowed in filenames.")
+        
+    old_stem = old_filename[:-3] if old_filename.endswith(".md") else old_filename
+    new_stem = new_filename[:-3] if new_filename.endswith(".md") else new_filename
+
+    if not old_stem or not new_stem:
+        raise ValueError("Filenames cannot be empty.")
+
+    if old_stem in ("User", "Assistant"):
+        raise ValueError("Renaming the core hubs 'User' and 'Assistant' is not allowed.")
+
+    old_file = old_stem + ".md"
+    new_file = new_stem + ".md"
+
+    brain_dir = get_brain_dir(mode).resolve()
+    old_path = (brain_dir / old_file).resolve()
+    new_path = (brain_dir / new_file).resolve()
+
+    # Path traversal protection
+    if not old_path.is_relative_to(brain_dir) or not new_path.is_relative_to(brain_dir):
+        raise ValueError("Directory traversal attempt detected.")
+
+    if not old_path.exists() or not old_path.is_file():
+        raise ValueError(f"Source memory file '{old_file}' does not exist.")
+
+    if new_path.exists():
+        raise ValueError(f"Destination memory file '{new_file}' already exists.")
+
+    # 1. Read old file contents, update H1 title, and save to new path
+    content = old_path.read_text(encoding="utf-8")
+    
+    # Update H1 title in content if it matches the old filename stem (case-insensitive)
+    lines = content.splitlines()
+    for idx, line in enumerate(lines):
+        if line.startswith("# "):
+            current_title = line[2:].strip()
+            if current_title.lower() == old_stem.lower():
+                lines[idx] = f"# {new_stem}"
+                break
+    content = "\n".join(lines)
+    
+    # Write to new path and delete old path
+    new_path.write_text(content, encoding="utf-8")
+    old_path.unlink()
+
+    # 2. Update all wikilinks in all other files
+    # Match [[old_stem]] or [[old_stem#anchor]] or [[old_stem|alias]] or [[old_stem#anchor|alias]]
+    # Group 1: optional anchor (starts with #)
+    # Group 2: optional alias (starts with |)
+    link_pattern = re.compile(
+        r'\[\[' + re.escape(old_stem) + r'((?:#[^\]|]+)?)((\|[^\]]+)?)\text{]}]'
+    )
+    def replace_link(match):
+        anchor = match.group(1) or ""
+        alias = match.group(2) or ""
+        return f"[[{new_stem}{anchor}{alias}]]"
+
+    for fpath in brain_dir.glob("*.md"):
+        if fpath == new_path:
+            continue
+        try:
+            file_content = fpath.read_text(encoding="utf-8")
+            updated_content = link_pattern.sub(replace_link, file_content)
+            if updated_content != file_content:
+                fpath.write_text(updated_content, encoding="utf-8")
+        except Exception as e:
+            print(f"Error updating wikilinks in {fpath.name}: {e}")
+
+    # 3. Rebuild map
+    rebuild_map(brain_dir)
+
+
+def reset_brain(mode: str):
+    """Deletes all memory files in the brain directory for a given mode, and seeds default hubs."""
+    brain_dir = get_brain_dir(mode).resolve()
+    if not brain_dir.exists() or not brain_dir.is_dir():
+        return
+    # Delete all files in the brain directory
+    for fpath in brain_dir.iterdir():
+        if fpath.is_file():
+            fpath.unlink()
+    # Re-initialize brains (re-seeds default hubs and rebuilds map.json)
+    init_brains()

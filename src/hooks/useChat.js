@@ -56,15 +56,22 @@ export function useChat({ conversations, settings, attachments, scroll }) {
       }
 
       // The backend reports which message ranges fell out of the model's
-      // context in response headers (see server/routes/chat.py).
+      // context, and the brain routing info, in response headers (see
+      // server/routes/chat.py). Attaching brain_activity to the streamed
+      // message makes the Brain Activity block appear live; files written by
+      // the background brain update show up when the conversation is reopened.
       conversations.setOutOfContext(parseTrimmedRanges(res));
+      const brainActivity = parseBrainActivity(res);
 
       // Add a placeholder assistant message, then fill it as chunks stream in.
-      conversations.setHistory((prev) => [...prev, { role: 'assistant', text: '', attachments: [] }]);
+      const assistantMessage = (replySoFar) => ({
+        role: 'assistant', text: replySoFar, attachments: [], brain_activity: brainActivity,
+      });
+      conversations.setHistory((prev) => [...prev, assistantMessage('')]);
       await streamInto(res, (replySoFar) => {
         conversations.setHistory((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', text: replySoFar, attachments: [] };
+          updated[updated.length - 1] = assistantMessage(replySoFar);
           return updated;
         });
       });
@@ -103,8 +110,19 @@ function buildChatBody(cid, text, readyAttachments, settings) {
     enable_thinking: settings.thinkingEnabled,
     max_tokens: Number.isFinite(parsedMaxTokens) ? parsedMaxTokens : null,
     smart_context: settings.smartContext,
-    brain_mode: settings.brainMode,
+    enable_brain: settings.brainEnabled,
   };
+}
+
+// The routing info ({ routing_reasoning, files_read, ... }) from the response
+// headers, or null when the turn ran without brain features.
+function parseBrainActivity(res) {
+  try {
+    const raw = res.headers.get('X-Brain-Activity');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 // The out-of-context ranges from the response headers, or null when the

@@ -41,15 +41,17 @@ export default function TopBar({
         </button>
       </div>
       <ModelPicker {...modelPickerProps} />
-      <button
-        id="brain-toggle-btn"
-        className={`brain-toggle-btn${showBrainExplorer ? ' active' : ''}`}
-        onClick={onToggleBrainExplorer}
-        aria-label={showBrainExplorer ? 'Close brain explorer' : 'Open brain explorer'}
-        title="Brain Explorer"
-      >
-        🧠
-      </button>
+      {onToggleBrainExplorer && (
+        <button
+          id="brain-toggle-btn"
+          className={`brain-toggle-btn${showBrainExplorer ? ' active' : ''}`}
+          onClick={onToggleBrainExplorer}
+          aria-label={showBrainExplorer ? 'Close brain explorer' : 'Open brain explorer'}
+          title="Brain Explorer"
+        >
+          Brain
+        </button>
+      )}
       <button className="settings-btn" onClick={onOpenSettings} aria-label="Open settings">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="3"></circle>
