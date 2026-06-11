@@ -1,0 +1,124 @@
+/* Shared form controls used in more than one place:
+   - .thinking-switch: the iOS-style on/off toggle (composer's Thinking toggle
+     and the settings modal's Smart context toggle).
+   - .slider-*: the stepped range slider used by the settings modal. */
+
+button.thinking-switch {
+  position: relative;
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: 1rem;
+  background-color: rgba(120, 120, 128, 0.16);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+  outline: none;
+  display: flex;
+  align-items: center;
+}
+
+button.thinking-switch:hover {
+  background-color: rgba(120, 120, 128, 0.24);
+}
+
+button.thinking-switch.on {
+  background-color: #007aff;
+}
+
+button.thinking-switch.on:hover {
+  background-color: #0066d6;
+}
+
+.thinking-switch-handle {
+  position: absolute;
+  left: 2px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.1);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button.thinking-switch.on .thinking-switch-handle {
+  transform: translateX(1rem);
+}
+
+/* Slider with step markers. The wrap stacks a custom track (bottom), the tick
+   marks (middle), and the input (top) so the thumb sits above the ticks while
+   the ticks stay visible over the track. */
+.slider-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 1.5rem;
+  margin: 0.35rem 0;
+}
+
+.slider-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Inset by half the thumb width so the end ticks line up with the thumb's
+   travel (its centre can't reach the very edge of the track). */
+.slider-ticks {
+  position: absolute;
+  left: 0.3rem;
+  right: 0.3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.slider-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 9px;
+  margin-top: -4.5px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.settings-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  /* Track is drawn by .slider-track underneath; keep the input itself clear so
+     the ticks show through, but on top (z-index 2) so the thumb covers them. */
+  background: transparent;
+  outline: none;
+  margin: 0;
+  position: relative;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.6rem;
+  height: 1.4rem;
+  border-radius: 999px; /* vertical pill, not a circle */
+  background: #007aff;
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.settings-slider::-webkit-slider-thumb:active {
+  transform: scale(1.15);
+}

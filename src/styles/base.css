@@ -1,0 +1,88 @@
+/* Global foundations: the font, page defaults, and element-level styles that
+   the rest of the app builds on. The bare `button` and `textarea` rules below
+   define the default look (round blue button, pill textarea); components that
+   need a different look override them with their own classes. */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #f8f9fa;
+  color: #1a1a1a;
+}
+
+#root {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Default button: the round blue action button (the composer's send button is
+   the canonical example). Most other buttons opt out via their own class. */
+button {
+  width: 3rem; /* 48px */
+  height: 3rem; /* 48px */
+  border-radius: 50%;
+  border: none;
+  background: #007aff;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+button:hover {
+  background: #0084ff;
+}
+
+button:active {
+  transform: translateY(2px) scale(0.95);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+button:disabled {
+  background: #e5e5ea;
+  color: #aeaeae;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Default textarea: the auto-growing pill input (used by the composer; the
+   settings "Instructions" field reuses it with a small override). */
+textarea {
+  flex: 1;
+  padding: 0.75rem 1.4rem;
+  font-family: inherit;
+  font-size: 1.05rem;
+  line-height: 1.5rem; /* 24px line height */
+  resize: none;
+  border-radius: 1.6rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background-color: #ffffff;
+  outline: none;
+  box-sizing: border-box;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+textarea:focus {
+  border-color: rgba(0, 122, 255, 0.45);
+}
+
+/* Shared spinner rotation (upload chips, the model loading overlay). */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

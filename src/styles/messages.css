@@ -1,0 +1,423 @@
+/* The chat area (components/MessageList.jsx + MessageBubble.jsx): the scroll
+   container, the message bubbles and their entrance animations, the styling
+   of markdown the model produces, attachments shown inside bubbles, and the
+   out-of-context dimming. */
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  /* overflow-y:auto alone forces overflow-x to compute to `auto` too, so any
+     too-wide child (code block, table, KaTeX block math) spawns a horizontal
+     scrollbar along the bottom edge — the "black bar" just above the input at
+     narrow widths. Pin overflow-x to hidden so the list never scrolls sideways;
+     wide elements scroll within their own boxes instead. */
+  overflow-x: hidden;
+  /* Always reserve room for the scrollbar so the layout doesn't shift sideways
+     when it appears. `both-edges` keeps the reserved space symmetric so the
+     centered content stays centered. */
+  scrollbar-gutter: stable both-edges;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding-top: 1.5rem;
+  padding-bottom: 2.5rem;
+  padding-left: max(2rem, calc((100% - 980px) / 2));
+  padding-right: max(2rem, calc((100% - 980px) / 2));
+  box-sizing: border-box;
+}
+
+/* Holds the scroll area plus its bottom fade overlay. No z-index/stacking
+   context here, so .messages-fade (below) can be lifted above the sidebar. */
+.messages-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Soft fade-out at the bottom edge so messages dissolve into the background
+   instead of ending on a hard cut. It's an overlay (not a mask on #messages)
+   so it can stop short of the scrollbar: --scrollbar-width is measured in JS
+   and inset on the right so the fade never paints over the scrollbar.
+   z-index 16 keeps it above the sidebar (z-index 15) so the sidebar tiles
+   dissolve into the same bottom fade. */
+.messages-fade {
+  position: absolute;
+  left: 0;
+  right: var(--scrollbar-width, 0px);
+  bottom: 0;
+  height: 2.5rem;
+  z-index: 16;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(248, 249, 250, 0) 0%, #f8f9fa 100%);
+}
+
+#messages > div:first-child {
+  margin-top: auto;
+}
+
+#messages > div {
+  position: relative;
+  max-width: 80%;
+  display: flex;
+  flex-direction: column;
+  /* Resting state. The entrance animation uses `backwards` fill to show its
+     hidden start state before it runs, then reverts here when it finishes, so
+     no lingering `forwards` fill pins transform — leaving it free for the FLIP
+     reflow animation in useMessageFlip.js. */
+  opacity: 1;
+  transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Each newly streamed word fades in individually (see lib/markdown.jsx). */
+.word-fade {
+  display: inline-block;
+  opacity: 0;
+  animation: wordFadeIn 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes userMessageFadeIn {
+  from {
+    opacity: 0;
+    /* User bubbles rest on the right and enter from the right: the whole bubble
+       starts shifted right, then slides left into place. The scale is kept
+       modest so this rightward translate dominates the perceived direction — a
+       larger scale spills the blown-up bubble across to the far side and
+       reverses which way it looks like it's coming from. */
+    transform: translate(300px, var(--random-y, 0px)) scale(1.6);
+    filter: blur(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* The shadow fades in on its own timeline (ease-in) so it isn't yanked to full
+   by the front-loaded curve of the main animation while the bubble is still
+   scaled up — which would blow the shadow up and spill it toward the input.
+   ease-in keeps it near zero during the brief scaled phase, then fades it in
+   smoothly as part of the entrance. */
+@keyframes userShadowFadeIn {
+  from {
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  to {
+    box-shadow: -5px 15px 30px rgba(0, 0, 0, 0.1);
+  }
+}
+
+@keyframes assistantMessageFadeIn {
+  from {
+    opacity: 0;
+    /* Mirror of the user entrance: assistant bubbles rest on the left and enter
+       from the left — the whole bubble starts shifted left, then slides right
+       into place. Same modest scale so the leftward translate reads clearly. */
+    transform: translate(-300px, var(--random-y, 0px)) scale(1.6);
+    filter: blur(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Shadow on its own ease-in timeline (see userShadowFadeIn). */
+@keyframes assistantShadowFadeIn {
+  from {
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  to {
+    box-shadow: 5px 10px 20px rgba(0, 0, 0, 0.05);
+  }
+}
+
+@keyframes wordFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* A fast diagonal glare that sweeps across the bubble face left -> right near
+   the end of the entrance. The highlight lives in an oversized (250%) gradient
+   on ::before; moving background-position-x from 100% to 0% slides the bright
+   band from off the left edge, through the middle, to off the right edge.
+   A single value applies to every background layer, but only the shine layer
+   (the one sized 250%) is wide enough to move — full-size layers are unaffected. */
+@keyframes bubbleShine {
+  from {
+    background-position-x: 100%;
+  }
+  to {
+    background-position-x: 0%;
+  }
+}
+
+.message-bubble {
+  position: relative;
+  isolation: isolate;
+  padding: 0.95rem 1.45rem;
+  border-radius: 1.5rem;
+  line-height: 1.6;
+  word-wrap: break-word;
+  font-size: 1.05rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* Each bubble is painted by two stacked pseudo-element layers, slightly offset
+   vertically, which produces the subtle embossed edge. */
+.message-bubble::before,
+.message-bubble::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Lighter background, placed a bit higher */
+.message-bubble::before {
+  top: 1px;
+  bottom: 0px;
+  z-index: -1;
+}
+
+/* Darker background, placed a bit lower */
+.message-bubble::after {
+  top: 1px;
+  bottom: -1px;
+  z-index: -2;
+}
+
+.user {
+  align-self: flex-end;
+  align-items: flex-end;
+  transform-origin: right bottom;
+  animation: userMessageFadeIn 2.2s cubic-bezier(0.05, 0.95, 0.1, 1) backwards;
+}
+
+.user .message-bubble {
+  box-shadow: -5px 15px 30px rgba(0, 0, 0, 0.1);
+  background-color: rgba(255, 255, 255, 0.357);
+  color: #0d1e3d;
+  animation: userShadowFadeIn 2.2s ease-in backwards;
+}
+
+.user .message-bubble::before {
+  background-color: rgb(235, 245, 255);
+}
+
+.user .message-bubble::after {
+  background-color: rgb(225, 241, 255);
+}
+
+.assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+  transform-origin: left bottom;
+  animation: assistantMessageFadeIn 2.2s cubic-bezier(0.05, 0.95, 0.1, 1) backwards;
+}
+
+.assistant .message-bubble {
+  background-color: rgba(255, 255, 255, 0.276);
+  box-shadow: 5px 10px 20px rgba(0, 0, 0, 0.05);
+  color: #1c1c1e;
+  animation: assistantShadowFadeIn 2.2s ease-in backwards;
+}
+
+.assistant .message-bubble::before {
+  background: linear-gradient(rgba(250, 254, 255, 0.782), rgb(255, 255, 255));
+  box-shadow: 0px -5px 25px rgba(0, 0, 0, 0.025);
+}
+
+.assistant .message-bubble::after {
+  background-color: rgb(231, 231, 241);
+}
+
+/* The glare sweep. It's a real overlay element (not a background layer) so it
+   can sit in front of the bubble text, above everything via z-index. The wide,
+   near-vertical highlight lives in an oversized gradient; bubbleShine slides it
+   left -> right across the bubble. */
+.bubble-shine {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.535) 50%, transparent 70%);
+  background-repeat: no-repeat;
+  background-size: 250% 100%;
+  background-position-x: 0%;
+  /* Fire at ~82% of the 2.2s entrance and finish right as it settles. */
+  animation: bubbleShine 0.8s ease-out 0.6s backwards;
+}
+
+/* Markdown produced by the model, rendered inside the bubbles. */
+
+#messages > div p {
+  margin: 0;
+}
+
+#messages > div p + p {
+  margin-top: 0.6rem;
+}
+
+#messages > div pre {
+  background-color: rgba(0, 0, 0, 0.04);
+  padding: 0.85rem 1.1rem;
+  border-radius: 10px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+#messages > div ul, #messages > div ol {
+  margin: 0.6rem 0;
+  padding-left: 1.5rem;
+}
+
+#messages > div li {
+  margin-bottom: 0.35rem;
+}
+
+#messages > div table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+}
+
+#messages > div th {
+  background-color: rgba(0, 0, 0, 0.03);
+  color: #1a1a1a;
+  font-weight: 600;
+  padding: 0.8rem 1rem;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+}
+
+#messages > div td {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  color: #2c2c2e;
+}
+
+#messages > div tr:last-child td {
+  border-bottom: none;
+}
+
+#messages > div tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.015);
+}
+
+#messages > div tr:hover {
+  background-color: rgba(0, 122, 255, 0.02);
+}
+
+/* Wrapper around streamed tables so wide ones scroll horizontally in place. */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.table-container table {
+  margin: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+#messages img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.75rem 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Attachments shown inside a sent message's bubble. */
+
+.bubble-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.bubble-image {
+  max-width: 260px;
+  max-height: 260px;
+  border-radius: 0.75rem;
+  object-fit: cover;
+  display: block;
+}
+
+.bubble-audio {
+  max-width: 100%;
+}
+
+.bubble-file {
+  display: inline-block;
+  padding: 0.4rem 0.7rem;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+  color: #007aff;
+  text-decoration: none;
+}
+
+/* Messages loaded from history shouldn't replay the entrance fly-in. */
+.no-anim {
+  animation: none !important;
+}
+
+/* Out-of-context tint.
+   Messages the model can no longer see (trimmed from its context window) are
+   washed with a muted blue-gray so it's visible at a glance which earlier turns
+   have dropped out, without an intrusive banner. Overrides both bubble layers
+   and the text colour; eased so it fades in when the boundary shifts. */
+.out-of-context .message-bubble {
+  color: #4d648b;
+  box-shadow: none;
+  transition: color 0.5s ease, box-shadow 0.5s ease;
+}
+
+.out-of-context .message-bubble::before {
+  background-color: #eaf0fca3;
+  transition: background-color 0.5s ease;
+}
+
+.out-of-context .message-bubble::after {
+  background-color: rgba(0, 0, 0, 0.015);
+  transition: background-color 0.5s ease;
+}
+
+/* Individual words (and atomic math) that fell out of the model's token sliding
+   window. The boundary lands mid-message, so only the leading out-of-context
+   words carry this — set per-word by dimLeadingWords() in BubbleText.jsx.
+   Fully-out messages additionally get the bubble tint above. */
+.word-out {
+  opacity: 0.7;
+  transition: opacity 0.5s ease;
+}

@@ -1,0 +1,15 @@
+/* Entry stylesheet: imports every per-feature file, one per UI area.
+   Looking for a style? Match the area you see on screen to the file name.
+   The import order only matters for base.css, which must come first (it holds
+   the font import and the element-level defaults the others build on). */
+
+@import './base.css';
+@import './layout.css';
+@import './topbar.css';
+@import './sidebar.css';
+@import './messages.css';
+@import './thinking.css';
+@import './composer.css';
+@import './controls.css';
+@import './settings.css';
+@import './model-picker.css';

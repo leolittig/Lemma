@@ -1,0 +1,218 @@
+/* The modal dialogs (components/SettingsModal.jsx and AddModelModal.jsx —
+   both reuse the same overlay/modal shell classes) and the settings form
+   fields. The sliders and toggle switches inside are in controls.css. */
+
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.6s;
+}
+
+.settings-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.settings-modal {
+  background: #ffffff;
+  width: 90%;
+  max-width: 480px;
+  border-radius: 1.25rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 1001;
+
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-overlay.visible .settings-modal {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.settings-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+button.close-btn {
+  width: 2rem !important;
+  height: 2rem !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: #666666 !important;
+  box-shadow: none !important;
+  border: none !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+button.close-btn:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #1a1a1a !important;
+  transform: none !important;
+}
+
+button.close-btn:active {
+  transform: scale(0.95) !important;
+}
+
+.settings-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  color: #1a1a1a;
+  box-sizing: border-box;
+}
+
+.settings-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.settings-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #3a3a3c;
+}
+
+/* The Instructions textarea reuses the base textarea look; flex doesn't apply
+   in the modal's column layout. */
+.settings-textarea {
+  flex: none;
+}
+
+/* Label + live value on one row (e.g. "Temperature   1.00"). */
+.settings-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.settings-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6e6e73;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A labelled on/off switch (reusing .thinking-switch): label on the left,
+   toggle pinned to the right. */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.settings-actions {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+button.settings-action-btn {
+  background: #007aff !important;
+  color: white !important;
+  padding: 0.6rem 1.25rem !important;
+  border-radius: 2rem !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  border: none !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08) !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+button.settings-action-btn:hover {
+  background: #0066d6 !important;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12) !important;
+  transform: translateY(-1px) !important;
+}
+
+button.settings-action-btn:active {
+  transform: translateY(1px) scale(0.98) !important;
+}
+
+/* Secondary (neutral) variant — used for "Save and reload" so primary actions
+   keep a clear visual hierarchy. */
+button.settings-action-btn.secondary {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #1a1a1a !important;
+  box-shadow: none !important;
+}
+
+button.settings-action-btn.secondary:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: none !important;
+}
+
+/* The Add Model dialog's body: a single labelled row of input + button. */
+.add-model-body {
+  padding: 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.add-model-body .settings-field {
+  margin: 0;
+}
+
+.add-model-row {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  align-items: center;
+}
+
+.add-model-input {
+  flex: 1;
+  padding: 0.75rem 1.1rem;
+  border-radius: 10rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  font-size: 1rem;
+  font-family: inherit;
+  outline: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  box-sizing: border-box;
+}
