@@ -74,7 +74,7 @@ Lemma/
 │   ├── system_prompt.py         Persists the default system prompt
 │   ├── mlx_compat.py            Workaround for checkpoints with extra tensors
 │   ├── brain/
-│   │   └── instruction_manual.md  Rules the brain manager model follows
+│   │   └── instructions/        Modular instructions (general, people, calendar, etc.)
 │   ├── storage/
 │   │   ├── database.py          Conversations + messages (SQLite, chats.db)
 │   │   ├── uploads.py           Uploaded media files (uploads/)
@@ -133,8 +133,6 @@ Lemma/
 │       ├── controls.css         Shared switches and sliders
 │       ├── settings.css         Modal dialogs + settings form
 │       └── model-picker.css     Model dropdown + loading overlay
-├── scripts/
-│   └── smoke_test_generation.py Minimal mlx_vlm generation sanity check
 ├── chats.db                     SQLite database (created on first run)
 ├── uploads/                     Uploaded attachment files
 ├── system_prompt.txt            Saved default system prompt (optional)
@@ -156,7 +154,7 @@ Lemma/
 | Add/modify an API endpoint | the matching file in [server/routes/](server/routes/) + [src/api/client.js](src/api/client.js) |
 | Change a request body's fields | [server/schemas.py](server/schemas.py) + [src/api/client.js](src/api/client.js) |
 | Change how messages look or animate | [src/components/MessageBubble.jsx](src/components/MessageBubble.jsx) + [src/styles/messages.css](src/styles/messages.css) |
-| Change brain routing / memory updates | [server/routes/chat.py](server/routes/chat.py) + [server/brain/instruction_manual.md](server/brain/instruction_manual.md) |
+| Change brain routing / memory updates | [server/routes/chat.py](server/routes/chat.py) + [server/brain/instructions/](server/brain/instructions/) |
 | Change brain file format or seeding | [server/storage/brain.py](server/storage/brain.py) |
 | Change the brain graph UI | [src/components/BrainExplorer.jsx](src/components/BrainExplorer.jsx) + [src/styles/brain-explorer.css](src/styles/brain-explorer.css) |
 | Change markdown / math rendering | [src/lib/markdown.jsx](src/lib/markdown.jsx) |

@@ -44,13 +44,12 @@ Thumbs.db
 # Tooling Caches
 .claude/
 .gemini/
+.agents/
 
 # Logs and temporary execution state
 *.log
 *.lock
 
-# Brain test/backup directories
-brain/_backup*/
-brain/*-brain/
-brain/everything-*/
+# Brain test/backup directories and active memories (created at runtime)
+/brain/
 *audit_report.md
