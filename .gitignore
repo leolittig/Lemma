@@ -54,3 +54,6 @@ brain/_backup*/
 brain/*-brain/
 brain/everything-*/
 *audit_report.md
+
+# Active user memories and personalized brain files
+brain/active/
