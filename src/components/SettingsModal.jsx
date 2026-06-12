@@ -54,7 +54,7 @@ const stepIndex = (steps, savedValue, defaultIndex) => {
   return i === -1 ? defaultIndex : i;
 };
 
-export default function SettingsModal({ open, onClose, settings, onReloadModel }) {
+export default function SettingsModal({ open, onClose, settings, onReloadModel, onReset }) {
   const {
     systemPrompt, setSystemPrompt,
     temperature, setTemperature,
@@ -62,6 +62,7 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
     maxTokens, setMaxTokens,
     smartContext, setSmartContext,
     brainEnabled, setBrainEnabled,
+    detailedLogs, setDetailedLogs,
   } = settings;
 
   // Keep the instructions textarea sized to its content, also right after the
@@ -83,6 +84,7 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
     try {
       await api.resetBrain("active");
       alert("Brain memory successfully reset.");
+      if (onReset) onReset();
     } catch (err) {
       console.error("Failed to reset brain:", err);
       alert("Failed to reset brain. See console for details.");
@@ -151,6 +153,18 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel }
             />
           </div>
         </div>
+        {brainEnabled && (
+          <div className="settings-field">
+            <div className="settings-toggle-row">
+              <label className="settings-label">Detailed memory logs</label>
+              <ToggleSwitch
+                on={detailedLogs}
+                onToggle={() => setDetailedLogs((v) => !v)}
+                label="detailed memory logs"
+              />
+            </div>
+          </div>
+        )}
         {brainEnabled && (
           <div className="settings-field">
             <div className="settings-toggle-row">
