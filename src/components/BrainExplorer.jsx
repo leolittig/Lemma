@@ -1,12 +1,18 @@
-// An interactive force-directed graph view of the brain's knowledge files.
-// Replaces the chat area when active. Uses SVG with a hand-rolled physics
-// simulation (no external libraries). Nodes can be dragged; the background
-// pans and zooms with mouse wheel. Clicking a node opens its file content
-// in a side editor pane with a Save button.
+// An interactive view of the brain. The default tab is a force-directed graph
+// of the user's knowledge (typed nodes growing from a single named root, with
+// colour by cluster and an icon by type). Other tabs surface the off-grid
+// entities — Calendar, Journal, Tasks, People, Assistant — which are not graph
+// nodes. Clicking a graph node opens its file in a side editor.
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as api from '../api/client';
 import { marked } from '../lib/markdown';
+import { useAutoScroll } from '../hooks/useAutoScroll';
+import BrainCalendar from './BrainCalendar';
+import BrainJournal from './BrainJournal';
+import BrainTasks from './BrainTasks';
+import BrainPeople from './BrainPeople';
+import BrainAssistant from './BrainAssistant';
 
 // Physics constants.
 const REPULSION = 1200;
@@ -15,278 +21,292 @@ const DAMPING = 0.82;
 const REST_LENGTH = 140;
 const CENTER_GRAVITY = 0.015;
 
-const CORE_HUBS = ['User', 'Assistant', 'Calendar'];
+const ROOT_ID = 'User';
+const CORE_HUBS = ['User']; // can't be deleted/renamed
 
+const VIEWS = [
+  { key: 'graph', label: 'Graph' },
+  { key: 'calendar', label: 'Calendar' },
+  { key: 'journal', label: 'Journal' },
+  { key: 'tasks', label: 'Tasks' },
+  { key: 'people', label: 'People' },
+  { key: 'assistant', label: 'Assistant' },
+];
+
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+// Build the laid-out graph: BFS depth from the root drives the radial layout;
+// the depth-1 branch a node descends from is its cluster (→ hue); the node's
+// type drives its icon.
 function initSimulation(graphData) {
-  const { nodes: rawNodes, links: rawLinks } = graphData;
-  
-  // Build a degree map so hub nodes are larger.
-  const degreeMap = {};
-  rawNodes.forEach((n) => { degreeMap[n.id] = 0; });
-  rawLinks.forEach((l) => {
-    degreeMap[l.source] = (degreeMap[l.source] || 0) + 1;
-    degreeMap[l.target] = (degreeMap[l.target] || 0) + 1;
-  });
+  const rawNodes = graphData.nodes || [];
+  const rawLinks = graphData.links || [];
+  const ids = new Set(rawNodes.map((n) => n.id));
 
-  // Build adjacency list for connectivity checks.
   const adj = {};
   rawNodes.forEach((n) => { adj[n.id] = []; });
   rawLinks.forEach((l) => {
-    if (adj[l.source]) adj[l.source].push(l.target);
-    if (adj[l.target]) adj[l.target].push(l.source);
+    if (adj[l.source] && adj[l.target]) { adj[l.source].push(l.target); adj[l.target].push(l.source); }
   });
+  const degree = {};
+  rawNodes.forEach((n) => { degree[n.id] = adj[n.id].length; });
 
-  // Identify hubs and leaves.
-  // Hubs are determined strictly by their parsed category.
-  const hubs = [];
-  const leaves = [];
+  // BFS depth + parent from the root.
+  const hasRoot = ids.has(ROOT_ID);
+  const depth = {}, parent = {};
+  if (hasRoot) {
+    depth[ROOT_ID] = 0;
+    const q = [ROOT_ID];
+    while (q.length) {
+      const u = q.shift();
+      for (const v of adj[u]) if (depth[v] === undefined) { depth[v] = depth[u] + 1; parent[v] = u; q.push(v); }
+    }
+  }
+  rawNodes.forEach((n) => { if (depth[n.id] === undefined) { depth[n.id] = hasRoot ? 2 : 1; parent[n.id] = null; } });
+
+  // Cluster = the depth-1 ancestor (top-level branch), or null (root/orphan).
+  const cluster = {};
   rawNodes.forEach((n) => {
-    const isHub = n.category === 'hub';
-    if (isHub) {
-      hubs.push(n);
-    } else {
-      leaves.push(n);
-    }
+    if (n.id === ROOT_ID) { cluster[n.id] = null; return; }
+    let cur = n.id;
+    while (parent[cur] != null && depth[parent[cur]] > 0) cur = parent[cur];
+    cluster[n.id] = depth[cur] === 1 ? cur : null;
   });
 
-  // Sort hubs deterministically to keep their positions stable.
-  hubs.sort((a, b) => {
-    if (a.id === 'User') return -1;
-    if (b.id === 'User') return 1;
-    if (a.id === 'Assistant') return -1;
-    if (b.id === 'Assistant') return 1;
-    const degA = degreeMap[a.id] || 0;
-    const degB = degreeMap[b.id] || 0;
-    if (degB !== degA) return degB - degA;
-    return a.id.localeCompare(b.id);
+  const branches = rawNodes.filter((n) => depth[n.id] === 1).map((n) => n.id).sort();
+  const hueByBranch = {};
+  branches.forEach((b, i) => { hueByBranch[b] = Math.round((360 * i) / Math.max(1, branches.length)); });
+
+  const colorOf = (id) => {
+    if (id === ROOT_ID) return '#475569';            // neutral dark root
+    const c = cluster[id];
+    if (c == null) return '#94a3b8';                  // orphan neutral
+    const hue = hueByBranch[c];
+    if (depth[id] === 1) return `hsl(${hue} 62% 48%)`; // branch anchor
+    const jit = (hashStr(id) % 17) - 8;
+    return `hsl(${(hue + jit + 360) % 360} 55% 64%)`;  // tint of the branch hue
+  };
+
+  // Radial placement: root center, branches on a ring, descendants in their
+  // branch's angular sector further out. The physics tick then relaxes it.
+  const pos = { [ROOT_ID]: { x: 0, y: 0 } };
+  const N = branches.length;
+  const branchAngle = {};
+  branches.forEach((b, i) => {
+    const a = N === 1 ? -Math.PI / 2 : (i / N) * Math.PI * 2 - Math.PI / 2;
+    branchAngle[b] = a;
+    pos[b] = { x: Math.cos(a) * 220, y: Math.sin(a) * 220 };
   });
-
-  // Position hubs in an inner ring.
-  const nodePositions = {};
-  hubs.forEach((h, index) => {
-    const angle = hubs.length === 1 ? 0 : (index / hubs.length) * Math.PI * 2;
-    const radius = hubs.length === 1 ? 0 : 130;
-    nodePositions[h.id] = {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius,
-      angle,
-      isHub: true,
-      degree: degreeMap[h.id] || 0,
-      radius: 20 + (degreeMap[h.id] || 0) * 2,
-    };
+  const members = {};
+  branches.forEach((b) => { members[b] = []; });
+  const orphans = [];
+  rawNodes.forEach((n) => {
+    if (n.id === ROOT_ID || depth[n.id] === 1) return;
+    const c = cluster[n.id];
+    if (c != null && members[c]) members[c].push(n.id); else orphans.push(n.id);
   });
-
-  // Group leaves by connected hub(s).
-  const hubLeaves = {};
-  hubs.forEach(h => { hubLeaves[h.id] = []; });
-  const multiHubLeaves = [];
-  const orphanedLeaves = [];
-
-  leaves.forEach(leaf => {
-    const connectedHubs = (adj[leaf.id] || []).filter(id => nodePositions[id]?.isHub);
-    if (connectedHubs.length === 1) {
-      hubLeaves[connectedHubs[0]].push(leaf);
-    } else if (connectedHubs.length > 1) {
-      multiHubLeaves.push({ leaf, connectedHubs });
-    } else {
-      orphanedLeaves.push(leaf);
-    }
-  });
-
-  // Sort leaf groups alphabetically by ID to keep the layout deterministic.
-  Object.keys(hubLeaves).forEach(hubId => {
-    hubLeaves[hubId].sort((a, b) => a.id.localeCompare(b.id));
-  });
-  multiHubLeaves.sort((a, b) => a.leaf.id.localeCompare(b.leaf.id));
-  orphanedLeaves.sort((a, b) => a.id.localeCompare(b.id));
-
-  // Position exclusive leaves around their connected hub's sector.
-  hubs.forEach(h => {
-    const list = hubLeaves[h.id];
+  Object.keys(members).forEach((c) => {
+    const list = members[c].sort();
     const K = list.length;
-    if (K === 0) return;
-
-    const hubPos = nodePositions[h.id];
-    const hubAngle = hubPos.angle;
-    // Spreading width increases with number of leaves, capped at 1.25 rad.
-    const sectorWidth = Math.min(1.25, 0.25 * K);
-
-    list.forEach((leaf, idx) => {
-      let angle;
-      if (K === 1) {
-        angle = hubAngle;
-      } else {
-        angle = hubAngle - sectorWidth / 2 + (idx / (K - 1)) * sectorWidth;
-      }
-      // Alternate radii slightly to prevent overlapping label collisions.
-      const dist = 320 + (idx % 2 === 0 ? 0 : 50);
-      nodePositions[leaf.id] = {
-        x: Math.cos(angle) * dist,
-        y: Math.sin(angle) * dist,
-        angle,
-        isHub: false,
-        degree: degreeMap[leaf.id] || 0,
-        radius: 8 + (degreeMap[leaf.id] || 0) * 1.5,
-      };
+    const base = branchAngle[c];
+    const sector = Math.min(1.4, 0.35 * Math.max(1, K));
+    list.forEach((id, idx) => {
+      const a = K === 1 ? base : base - sector / 2 + (idx / (K - 1)) * sector;
+      const r = 220 + (depth[id] - 1) * 170 + (idx % 2) * 40;
+      pos[id] = { x: Math.cos(a) * r, y: Math.sin(a) * r };
     });
   });
-
-  // Position multi-hub leaves in an intermediate ring.
-  multiHubLeaves.forEach(({ leaf, connectedHubs }, idx) => {
-    let sumX = 0, sumY = 0;
-    connectedHubs.forEach(hubId => {
-      const hubAngle = nodePositions[hubId].angle;
-      sumX += Math.cos(hubAngle);
-      sumY += Math.sin(hubAngle);
-    });
-    let angle = Math.atan2(sumY, sumX);
-    // Add small deterministic spacing offset.
-    if (multiHubLeaves.length > 1) {
-      const offset = (idx - (multiHubLeaves.length - 1) / 2) * 0.12;
-      angle += offset;
-    }
-    const dist = 220;
-    nodePositions[leaf.id] = {
-      x: Math.cos(angle) * dist,
-      y: Math.sin(angle) * dist,
-      angle,
-      isHub: false,
-      degree: degreeMap[leaf.id] || 0,
-      radius: 8 + (degreeMap[leaf.id] || 0) * 1.5,
-    };
+  orphans.forEach((id, idx) => {
+    const a = (idx / Math.max(1, orphans.length)) * Math.PI * 2;
+    pos[id] = { x: Math.cos(a) * 460, y: Math.sin(a) * 460 };
+  });
+  rawNodes.forEach((n, idx) => {
+    if (!pos[n.id]) { const a = (idx / rawNodes.length) * Math.PI * 2; pos[n.id] = { x: Math.cos(a) * 250, y: Math.sin(a) * 250 }; }
   });
 
-  // Position orphaned leaves.
-  orphanedLeaves.forEach((leaf, idx) => {
-    const angle = orphanedLeaves.length === 1 ? 0 : (idx / orphanedLeaves.length) * Math.PI * 2;
-    const dist = 380;
-    nodePositions[leaf.id] = {
-      x: Math.cos(angle) * dist,
-      y: Math.sin(angle) * dist,
-      angle,
-      isHub: false,
-      degree: degreeMap[leaf.id] || 0,
-      radius: 8 + (degreeMap[leaf.id] || 0) * 1.5,
-    };
-  });
-
-  // Create nodes list.
-  const nodes = rawNodes.map(n => {
-    const pos = nodePositions[n.id];
+  const nodes = rawNodes.map((n) => {
+    const isRoot = n.id === ROOT_ID;
+    const deg = degree[n.id] || 0;
+    const radius = isRoot ? 26
+      : depth[n.id] === 1 ? 16 + Math.min(deg, 8) * 1.5
+        : 9 + Math.min(deg, 6) * 1.2;
     return {
       id: n.id,
       label: n.label || n.id,
-      x: pos.x,
-      y: pos.y,
-      vx: 0,
-      vy: 0,
-      radius: pos.radius,
-      isHub: pos.isHub,
-      degree: pos.degree,
-      category: n.category || 'leaf',
-      updated: n.updated || '',
-      created: n.created || '',
+      x: pos[n.id].x, y: pos[n.id].y, vx: 0, vy: 0,
+      radius,
+      color: colorOf(n.id),
+      depth: depth[n.id],
+      cluster: cluster[n.id],
+      type: n.type || 'leaf',
+      isRoot, pinned: isRoot,
+      degree: deg,
+      event_count: n.event_count || 0,
+      status: n.status || '', tags: n.tags || [], relationship: n.relationship || '',
+      updated: n.updated || '', created: n.created || '',
     };
   });
 
-  const nodeById = {};
-  nodes.forEach((n) => { nodeById[n.id] = n; });
-
+  const byId = {};
+  nodes.forEach((n) => { byId[n.id] = n; });
   const links = rawLinks
-    .filter((l) => nodeById[l.source] && nodeById[l.target])
-    .map((l) => ({
-      source: nodeById[l.source],
-      target: nodeById[l.target],
-    }));
+    .filter((l) => byId[l.source] && byId[l.target])
+    .map((l) => ({ source: byId[l.source], target: byId[l.target] }));
 
-  return { nodes, links };
+  const legend = branches.map((b) => ({ id: b, label: byId[b]?.label || b, hue: hueByBranch[b] }));
+  return { nodes, links, legend };
 }
 
-function tick(nodes, links) {
-  // Repulsion (all pairs).
+function tick(nodes, links, draggedNode) {
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i], b = nodes[j];
       let dx = b.x - a.x, dy = b.y - a.y;
       let dist = Math.sqrt(dx * dx + dy * dy) || 1;
       const force = REPULSION / (dist * dist);
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      a.vx -= fx; a.vy -= fy;
-      b.vx += fx; b.vy += fy;
+      const fx = (dx / dist) * force, fy = (dy / dist) * force;
+      a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
     }
   }
-
-  // Collision resolution (prevent overlapping nodes/labels).
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i], b = nodes[j];
       let dx = b.x - a.x, dy = b.y - a.y;
       let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const minDist = a.radius + b.radius + 120; // Spacing buffer
+      const minDist = a.radius + b.radius + 120;
       if (dist < minDist) {
         const overlap = minDist - dist;
-        const px = (dx / dist) * overlap * 0.5;
-        const py = (dy / dist) * overlap * 0.5;
-        a.x -= px; a.y -= py;
-        b.x += px; b.y += py;
-        
-        a.vx *= 0.75; a.vy *= 0.75;
-        b.vx *= 0.75; b.vy *= 0.75;
+        const px = (dx / dist) * overlap * 0.5, py = (dy / dist) * overlap * 0.5;
+        if (!a.pinned && a !== draggedNode) { a.x -= px; a.y -= py; a.vx *= 0.75; a.vy *= 0.75; }
+        if (!b.pinned && b !== draggedNode) { b.x += px; b.y += py; b.vx *= 0.75; b.vy *= 0.75; }
       }
     }
   }
-
-  // Attraction along links.
   links.forEach(({ source, target }) => {
     let dx = target.x - source.x, dy = target.y - source.y;
     let dist = Math.sqrt(dx * dx + dy * dy) || 1;
     const force = (dist - REST_LENGTH) * ATTRACTION;
-    const fx = (dx / dist) * force;
-    const fy = (dy / dist) * force;
-    source.vx += fx; source.vy += fy;
-    target.vx -= fx; target.vy -= fy;
+    const fx = (dx / dist) * force, fy = (dy / dist) * force;
+    source.vx += fx; source.vy += fy; target.vx -= fx; target.vy -= fy;
   });
-
-  // Center gravity.
+  nodes.forEach((n) => { n.vx -= n.x * CENTER_GRAVITY; n.vy -= n.y * CENTER_GRAVITY; });
   nodes.forEach((n) => {
-    n.vx -= n.x * CENTER_GRAVITY;
-    n.vy -= n.y * CENTER_GRAVITY;
-  });
-
-  // Integrate positions.
-  nodes.forEach((n) => {
-    n.vx *= DAMPING;
-    n.vy *= DAMPING;
-    n.x += n.vx;
-    n.y += n.vy;
+    if (n.pinned || n === draggedNode) {
+      n.vx = 0; n.vy = 0;
+      if (n.isRoot) { n.x = 0; n.y = 0; }
+      return;
+    }
+    n.vx *= DAMPING; n.vy *= DAMPING; n.x += n.vx; n.y += n.vy;
   });
 }
 
-export default function BrainExplorer({ brainMode, onClose }) {
+function settle(s) {
+  for (let i = 0; i < 300; i++) tick(s.nodes, s.links);
+  return s;
+}
+
+// A small white line-icon per node type, centred at the node origin.
+function TypeGlyph({ type, size }) {
+  const props = { fill: 'none', stroke: '#ffffff', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', opacity: 0.95 };
+  let paths;
+  switch (type) {
+    case 'user':
+    case 'person':
+      paths = (<><circle cx="12" cy="8" r="4" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>); break;
+    case 'activity':
+      paths = (<><rect x="3" y="8" width="18" height="12" rx="2" /><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>); break;
+    case 'task':
+      paths = (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 12l2.5 2.5L16 9" /></>); break;
+    case 'group':
+      paths = (<><circle cx="9" cy="9" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M16 6.5a3 3 0 0 1 0 6" /></>); break;
+    case 'place':
+      paths = (<><path d="M12 21s6-5.5 6-10a6 6 0 1 0-12 0c0 4.5 6 10 6 10z" /><circle cx="12" cy="11" r="2" /></>); break;
+    case 'pet':
+      paths = (<><circle cx="12" cy="14" r="4" /><circle cx="6" cy="9" r="1.5" /><circle cx="18" cy="9" r="1.5" /></>); break;
+    case 'goal':
+      paths = (<><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></>); break;
+    default:
+      paths = (<circle cx="12" cy="12" r="5" />);
+  }
+  return (<g transform={`translate(${-size / 2},${-size / 2}) scale(${size / 24})`} {...props}>{paths}</g>);
+}
+
+export default function BrainExplorer({ brainMode, activity, detailedLogs, onClose, onReset }) {
+  const [view, setView] = useState('graph');
   const [sim, setSim] = useState(null);
-  const [selected, setSelected] = useState(null); // { id, content, dirty }
+  const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [editorContent, setEditorContent] = useState('');
-  const [editorTab, setEditorTab] = useState('preview'); // 'preview' or 'edit'
+  const [editorTab, setEditorTab] = useState('preview');
   const [paneWidth, setPaneWidth] = useState(480);
   const isResizing = useRef(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState('');
+  const [nodeRefs, setNodeRefs] = useState(null);
 
   const selectedRef = useRef(selected);
   const serverContentRef = useRef('');
+  const [logCollapsed, setLogCollapsed] = useState(false);
+  
+  // Collapse memory activity log on screen/tab changes
+  useEffect(() => {
+    setLogCollapsed(true);
+  }, [view]);
+  const logScroll = useAutoScroll({ reengageAtBottom: false });
+  const prevProcessingRef = useRef(false);
+
+  const act = activity || { processing: false, events: [], stream: '' };
+  
+  // Filter events when detailedLogs is disabled
+  const displayEvents = useMemo(() => {
+    if (detailedLogs) return act.events;
+    
+    // Filter to only include actions and errors
+    const actions = act.events.filter(e => 
+      e.type === 'write' || e.type === 'delete' || e.type === 'calendar' || e.type === 'journal' || e.type === 'error'
+    );
+    
+    // If no actions have occurred yet but we are processing, show a status indicator
+    if (actions.length === 0 && act.processing) {
+      const latestStatus = [...act.events].reverse().find(e => e.type === 'status');
+      return [{
+        seq: 'status',
+        ts: latestStatus?.ts || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        type: 'status',
+        text: latestStatus?.text || 'Updating memory…'
+      }];
+    }
+    
+    return actions;
+  }, [act.events, act.processing, detailedLogs]);
+
+  const hasActivity = act.processing || act.events.length > 0 || act.stream;
 
   useEffect(() => {
-    selectedRef.current = selected;
-  }, [selected]);
+    if (act.processing && !prevProcessingRef.current) logScroll.lockToBottom();
+    prevProcessingRef.current = act.processing;
+  }, [act.processing, logScroll]);
+  useEffect(() => { logScroll.notifyContentChanged(); }, [act.events.length, act.stream, logScroll]);
+  useEffect(() => { if (!logCollapsed) logScroll.lockToBottom(); }, [logCollapsed, logScroll]);
 
-  // Reset renaming states when selected node changes
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => { setIsRenaming(false); setNewName(''); }, [selected?.id]);
+
+  // Fetch where the off-grid entities reference the selected node.
   useEffect(() => {
-    setIsRenaming(false);
-    setNewName('');
-  }, [selected?.id]);
+    if (!selected) { setNodeRefs(null); return; }
+    let cancelled = false;
+    api.fetchBrainNodeRefs(brainMode, selected.id)
+      .then((r) => { if (!cancelled) setNodeRefs(r); })
+      .catch(() => { if (!cancelled) setNodeRefs(null); });
+    return () => { cancelled = true; };
+  }, [selected?.id, brainMode, selected?.updated]);
 
   const handleResizerMouseDown = useCallback((e) => {
     e.preventDefault();
@@ -301,26 +321,44 @@ export default function BrainExplorer({ brainMode, onClose }) {
       setPaneWidth(Math.max(320, Math.min(nextWidth, window.innerWidth * 0.8)));
     };
     const handleUp = () => {
-      if (isResizing.current) {
-        isResizing.current = false;
-        document.body.style.cursor = '';
-      }
+      if (isResizing.current) { isResizing.current = false; document.body.style.cursor = ''; }
     };
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
-    };
+    return () => { window.removeEventListener('mousemove', handleMove); window.removeEventListener('mouseup', handleUp); };
   }, []);
 
   const svgRef = useRef(null);
   const panRef = useRef({ x: 0, y: 0, zoom: 1 });
   const panDragRef = useRef(null);
+  const dragRef = useRef(null);
+  const simAlpha = useRef(1.0);
   const [, forceRender] = useState(0);
-
-  // Bumped to refetch the graph after a file is deleted.
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Animation loop to relax node positions in real-time
+  useEffect(() => {
+    if (view !== 'graph' || !sim) return;
+    let animId;
+    const run = () => {
+      if (simAlpha.current > 0.005) {
+        const draggedNode = dragRef.current ? dragRef.current.node : null;
+        tick(sim.nodes, sim.links, draggedNode);
+        
+        // Cool down if not dragging
+        if (!draggedNode) {
+          simAlpha.current *= 0.98;
+        } else {
+          simAlpha.current = 1.0;
+        }
+        
+        forceRender((v) => v + 1);
+      }
+      animId = requestAnimationFrame(run);
+    };
+    animId = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(animId);
+  }, [view, sim]);
 
   // Load graph data.
   useEffect(() => {
@@ -329,143 +367,93 @@ export default function BrainExplorer({ brainMode, onClose }) {
     api.fetchBrainGraph(brainMode)
       .then((data) => {
         if (cancelled) return;
-        const s = initSimulation(data);
-        for (let i = 0; i < 300; i++) {
-          tick(s.nodes, s.links);
-        }
-        setSim(s);
+        setSim(settle(initSimulation(data)));
+        simAlpha.current = 1.0;
         setLoading(false);
       })
-      .catch((err) => {
-        console.error('Brain graph load failed:', err);
-        if (!cancelled) setLoading(false);
-      });
+      .catch((err) => { console.error('Brain graph load failed:', err); if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [brainMode, reloadKey]);
 
-  // Poll graph data in the background every 2.5 seconds to support real-time updates from background memory model commits.
+  // Poll graph data so background memory commits show up live.
   useEffect(() => {
     const timer = setInterval(() => {
       api.fetchBrainGraph(brainMode)
         .then((data) => {
           setSim((currSim) => {
-            if (!currSim) {
-              const s = initSimulation(data);
-              for (let i = 0; i < 300; i++) {
-                tick(s.nodes, s.links);
-              }
-              return s;
-            }
-            
-            // Compare structure (including categories) to avoid unnecessary re-initialization
-            const currNodeIds = currSim.nodes.map((n) => `${n.id}:${n.category}`).sort().join(',');
-            const newNodeIds = data.nodes.map((n) => `${n.id}:${n.category}`).sort().join(',');
-            
+            if (!currSim) return settle(initSimulation(data));
+
+            const sig = (n) => `${n.id}:${n.type}`;
+            const currNodeIds = currSim.nodes.map(sig).sort().join(',');
+            const newNodeIds = data.nodes.map(sig).sort().join(',');
             const currLinkKeys = currSim.links.map((l) => `${l.source.id}->${l.target.id}`).sort().join(',');
             const newLinkKeys = data.links.map((l) => `${l.source}->${l.target}`).sort().join(',');
-            
+
             if (currNodeIds === newNodeIds && currLinkKeys === newLinkKeys) {
-              // Same structure! Just update labels, degrees, and updated/created timestamps in-place
-              const updatedNodes = currSim.nodes.map(n => {
-                const newNode = data.nodes.find(nn => nn.id === n.id);
-                if (newNode) {
-                  return {
-                    ...n,
-                    label: newNode.label || newNode.id,
-                    degree: newNode.val,
-                    updated: newNode.updated,
-                    created: newNode.created,
-                  };
-                }
-                return n;
+              // Same structure — refresh in place, keep positions/colours.
+              const updatedNodes = currSim.nodes.map((n) => {
+                const nn = data.nodes.find((x) => x.id === n.id);
+                return nn ? {
+                  ...n, label: nn.label || nn.id, degree: nn.val,
+                  updated: nn.updated, created: nn.created, event_count: nn.event_count || 0,
+                  status: nn.status || '', tags: nn.tags || [], relationship: nn.relationship || '',
+                } : n;
               });
-              const nodeById = {};
-              updatedNodes.forEach(n => { nodeById[n.id] = n; });
-              const updatedLinks = currSim.links.map(l => ({
-                source: nodeById[l.source.id],
-                target: nodeById[l.target.id]
-              })).filter(l => l.source && l.target);
-
-              // If there's an active selected node, check if its updated timestamp changed
-              const currentSelected = selectedRef.current;
-              if (currentSelected) {
-                const newSelectedNode = data.nodes.find(n => n.id === currentSelected.id);
-                if (newSelectedNode && newSelectedNode.updated !== currentSelected.updated) {
-                  api.fetchBrainFile(brainMode, currentSelected.id)
-                    .then((fileData) => {
-                      setSelected(prev => {
-                        if (prev && prev.id === currentSelected.id) {
-                          return { ...prev, updated: newSelectedNode.updated };
-                        }
-                        return prev;
-                      });
-                      setEditorContent(prevContent => {
-                        if (prevContent === serverContentRef.current) {
-                          return fileData.content || '';
-                        }
-                        return prevContent;
-                      });
-                      serverContentRef.current = fileData.content || '';
-                    })
-                    .catch(err => console.error('Failed to sync open brain file:', err));
-                }
-              }
-
-              return {
-                nodes: updatedNodes,
-                links: updatedLinks,
-              };
-            }
-            
-            const s = initSimulation(data);
-            for (let i = 0; i < 300; i++) {
-              tick(s.nodes, s.links);
+              const byId = {};
+              updatedNodes.forEach((n) => { byId[n.id] = n; });
+              const updatedLinks = currSim.links
+                .map((l) => ({ source: byId[l.source.id], target: byId[l.target.id] }))
+                .filter((l) => l.source && l.target);
+              syncOpenNode(data);
+              return { nodes: updatedNodes, links: updatedLinks, legend: currSim.legend };
             }
 
-            // Sync open node if structure changed (e.g. node deleted or renamed)
-            const currentSelected = selectedRef.current;
-            if (currentSelected) {
-              const stillExists = data.nodes.some(n => n.id === currentSelected.id);
-              if (!stillExists) {
-                setSelected(null);
-              } else {
-                const newSelectedNode = data.nodes.find(n => n.id === currentSelected.id);
-                if (newSelectedNode && newSelectedNode.updated !== currentSelected.updated) {
-                  api.fetchBrainFile(brainMode, currentSelected.id)
-                    .then((fileData) => {
-                      setSelected(prev => {
-                        if (prev && prev.id === currentSelected.id) {
-                          return { ...prev, updated: newSelectedNode.updated };
-                        }
-                        return prev;
-                      });
-                      setEditorContent(prevContent => {
-                        if (prevContent === serverContentRef.current) {
-                          return fileData.content || '';
-                        }
-                        return prevContent;
-                      });
-                      serverContentRef.current = fileData.content || '';
-                    })
-                    .catch(err => console.error('Failed to sync open brain file after struct change:', err));
-                }
-              }
-            }
-
+            const s = settle(initSimulation(data));
+            syncOpenNode(data, true);
+            simAlpha.current = 1.0;
             return s;
           });
         })
-        .catch((err) => {
-          console.error('Real-time background graph sync failed:', err);
-        });
+        .catch((err) => console.error('Real-time background graph sync failed:', err));
     }, 2500);
+
+    function syncOpenNode(data, structureChanged) {
+      const cur = selectedRef.current;
+      if (!cur) return;
+      const exists = data.nodes.some((n) => n.id === cur.id);
+      if (structureChanged && !exists) { setSelected(null); return; }
+      const nn = data.nodes.find((n) => n.id === cur.id);
+      if (nn && nn.updated !== cur.updated) {
+        api.fetchBrainFile(brainMode, cur.id)
+          .then((fileData) => {
+            setSelected((prev) => (prev && prev.id === cur.id ? { ...prev, updated: nn.updated } : prev));
+            setEditorContent((prevContent) => (prevContent === serverContentRef.current ? (fileData.content || '') : prevContent));
+            serverContentRef.current = fileData.content || '';
+          })
+          .catch((err) => console.error('Failed to sync open brain file:', err));
+      }
+    }
     return () => clearInterval(timer);
   }, [brainMode]);
 
-  const handleNodeClick = useCallback(async (node) => {
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const data = await api.fetchBrainFile(brainMode, node.id);
-      setSelected({ id: node.id, label: node.label, updated: node.updated });
+      const data = await api.fetchBrainGraph(brainMode);
+      setSim(() => settle(initSimulation(data)));
+      simAlpha.current = 1.0;
+    } catch (err) {
+      console.error('Brain graph refresh failed:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [brainMode]);
+
+  const selectNodeById = useCallback(async (id, label, updated) => {
+    setView('graph');
+    try {
+      const data = await api.fetchBrainFile(brainMode, id);
+      setSelected({ id, label: label || id, updated: updated || '' });
       setEditorContent(data.content || '');
       serverContentRef.current = data.content || '';
       setEditorTab('preview');
@@ -474,6 +462,8 @@ export default function BrainExplorer({ brainMode, onClose }) {
     }
   }, [brainMode]);
 
+  const handleNodeClick = useCallback((node) => selectNodeById(node.id, node.label, node.updated), [selectNodeById]);
+
   const handleSave = useCallback(async () => {
     if (!selected) return;
     setSaving(true);
@@ -481,151 +471,103 @@ export default function BrainExplorer({ brainMode, onClose }) {
       await api.saveBrainFile(brainMode, selected.id, editorContent);
       serverContentRef.current = editorContent;
       const data = await api.fetchBrainGraph(brainMode);
-      const updatedNode = data.nodes.find(n => n.id === selected.id);
-      setSelected({
-        id: selected.id,
-        label: selected.label,
-        updated: updatedNode ? updatedNode.updated : selected.updated
-      });
-      setSim(() => {
-        const s = initSimulation(data);
-        for (let i = 0; i < 300; i++) {
-          tick(s.nodes, s.links);
-        }
-        return s;
-      });
+      const updatedNode = data.nodes.find((n) => n.id === selected.id);
+      setSelected({ id: selected.id, label: selected.label, updated: updatedNode ? updatedNode.updated : selected.updated });
+      setSim(() => settle(initSimulation(data)));
+      simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain file save failed:', err);
+      alert('Save failed. Keep the --- frontmatter (created/updated/type) and balanced [[links]].');
     } finally {
       setSaving(false);
     }
   }, [brainMode, selected, editorContent]);
 
-  // Delete the selected file and refetch the graph without it.
   const handleDelete = useCallback(async () => {
     if (!selected) return;
-    if (!window.confirm(`Are you sure you want to delete "${selected.label || selected.id}"?`)) {
-      return;
-    }
+    if (!window.confirm(`Delete "${selected.label || selected.id}"?`)) return;
     try {
       await api.deleteBrainFile(brainMode, selected.id);
       setSelected(null);
       const data = await api.fetchBrainGraph(brainMode);
-      setSim(() => {
-        const s = initSimulation(data);
-        for (let i = 0; i < 300; i++) {
-          tick(s.nodes, s.links);
-        }
-        return s;
-      });
+      setSim(() => settle(initSimulation(data)));
+      simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain file delete failed:', err);
-    }
-  }, [brainMode, selected]);
-
-  // Reset core hubs (User, Assistant, Calendar) to their default templates.
-  const handleReset = useCallback(async () => {
-    if (!selected) return;
-    if (!window.confirm(`Are you sure you want to reset the core hub "${selected.id}" to its default state? This will clear all its logs and custom entries.`)) {
-      return;
-    }
-    setSaving(true);
-    try {
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const hh = String(now.getHours()).padStart(2, '0');
-      const min = String(now.getMinutes()).padStart(2, '0');
-      const nowStr = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
-
-      let defaultContent = '';
-      if (selected.id === 'User') {
-        defaultContent = `---\ncreated: ${nowStr}\nupdated: ${nowStr}\n---\n\n# User\n\nThe root hub for all information about the user.\n\n## Content / Logs\n- [${nowStr}] **System**: Memory graph initialized.\n\n## Connections & Links\n- Hubs: [[Assistant]], [[Calendar]]\n`;
-      } else if (selected.id === 'Assistant') {
-        defaultContent = `---\ncreated: ${nowStr}\nupdated: ${nowStr}\n---\n\n# Assistant\n\nThe assistant hub storing personality parameters, tone guidelines, and user preferences.\n\n## Content / Logs\n- [${nowStr}] **System**: Assistant memory profile initialized.\n\n## Connections & Links\n- Hubs: [[User]], [[Calendar]]\n`;
-      } else if (selected.id === 'Calendar') {
-        defaultContent = `---\ncreated: ${nowStr}\nupdated: ${nowStr}\n---\n\n# Calendar\n\nCore hub for deadlines, commitments, assignments, events, and birthdays.\n\n## Content / Logs\n- [${nowStr}] **System**: Calendar initialized.\n\n## Connections & Links\n- Hubs: [[User]]\n`;
-      } else {
-        throw new Error('Not a core hub');
-      }
-
-      await api.saveBrainFile(brainMode, selected.id, defaultContent);
-      setEditorContent(defaultContent);
-      serverContentRef.current = defaultContent;
-
-      const data = await api.fetchBrainGraph(brainMode);
-      const updatedNode = data.nodes.find(n => n.id === selected.id);
-      setSelected({
-        id: selected.id,
-        label: selected.label,
-        updated: updatedNode ? updatedNode.updated : selected.updated
-      });
-      setSim(() => {
-        const s = initSimulation(data);
-        for (let i = 0; i < 300; i++) {
-          tick(s.nodes, s.links);
-        }
-        return s;
-      });
-    } catch (err) {
-      console.error('Brain core hub reset failed:', err);
-    } finally {
-      setSaving(false);
     }
   }, [brainMode, selected]);
 
   const handleRenameSave = useCallback(async () => {
     if (!selected || !newName.trim()) return;
     const cleanName = newName.trim();
-    if (cleanName === selected.id || cleanName === selected.label) {
-      setIsRenaming(false);
-      return;
-    }
+    if (cleanName === selected.id || cleanName === selected.label) { setIsRenaming(false); return; }
     setSaving(true);
     try {
       await api.renameBrainFile(brainMode, selected.id, cleanName);
       setIsRenaming(false);
       const data = await api.fetchBrainGraph(brainMode);
-      const updatedNode = data.nodes.find(n => n.id === cleanName);
-      setSelected({
-        id: cleanName,
-        label: cleanName,
-        updated: updatedNode ? updatedNode.updated : ''
-      });
-      setSim(() => {
-        const s = initSimulation(data);
-        for (let i = 0; i < 300; i++) {
-          tick(s.nodes, s.links);
-        }
-        return s;
-      });
+      const updatedNode = data.nodes.find((n) => n.id === cleanName);
+      setSelected({ id: cleanName, label: cleanName, updated: updatedNode ? updatedNode.updated : '' });
+      setSim(() => settle(initSimulation(data)));
+      simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain file rename failed:', err);
-      alert(err.message || 'Rename failed. Ensure the name contains no spaces/slashes and does not already exist.');
+      alert(err.message || 'Rename failed. Use a unique name with no spaces/slashes.');
     } finally {
       setSaving(false);
     }
   }, [brainMode, selected, newName]);
+
+  const handleResetBrain = useCallback(async () => {
+    if (!window.confirm('Reset the entire brain? This erases all nodes and starts fresh (you\'ll be asked for your name again).')) return;
+    try {
+      await api.resetBrain(brainMode);
+      (onReset || onClose)();
+    } catch (err) {
+      console.error('Brain reset failed:', err);
+      alert('Reset failed.');
+    }
+  }, [brainMode, onReset, onClose]);
+
+  const handleMouseDown = useCallback((e, node) => {
+    e.stopPropagation();
+    if (node) {
+      node.dragging = true;
+      dragRef.current = { node, startX: e.clientX, startY: e.clientY, origX: node.x, origY: node.y };
+      simAlpha.current = 1.0;
+    }
+  }, []);
 
   const handleBgMouseDown = useCallback((e) => {
     if (e.target === svgRef.current || e.target.classList.contains('brain-bg-rect')) {
       panDragRef.current = { startX: e.clientX, startY: e.clientY, origPanX: panRef.current.x, origPanY: panRef.current.y };
     }
   }, []);
-
   const handleMouseMove = useCallback((e) => {
+    if (dragRef.current) {
+      const { node } = dragRef.current;
+      const z = panRef.current.zoom;
+      node.x = dragRef.current.origX + (e.clientX - dragRef.current.startX) / z;
+      node.y = dragRef.current.origY + (e.clientY - dragRef.current.startY) / z;
+      
+      simAlpha.current = 1.0;
+      forceRender((v) => v + 1);
+    }
     if (panDragRef.current) {
       panRef.current.x = panDragRef.current.origPanX + (e.clientX - panDragRef.current.startX);
       panRef.current.y = panDragRef.current.origPanY + (e.clientY - panDragRef.current.startY);
       forceRender((v) => v + 1);
     }
   }, []);
-
   const handleMouseUp = useCallback(() => {
+    if (dragRef.current) {
+      dragRef.current.node.dragging = false;
+      dragRef.current = null;
+      simAlpha.current = 1.0;
+      forceRender((v) => v + 1);
+    }
     panDragRef.current = null;
   }, []);
-
   const handleWheel = useCallback((e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.92 : 1.08;
@@ -633,46 +575,121 @@ export default function BrainExplorer({ brainMode, onClose }) {
     forceRender((v) => v + 1);
   }, []);
 
-  if (loading) {
+  const closeButton = (
+    <button id="brain-explorer-close" className="brain-explorer-close" onClick={onClose} aria-label="Close brain explorer">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+      <span className="brain-explorer-close-label">Back to chat</span>
+    </button>
+  );
+
+  const tabBar = (
+    <div className="brain-view-tabs">
+      {VIEWS.map((v) => (
+        <button
+          key={v.key}
+          className={`brain-view-tab${view === v.key ? ' active' : ''}`}
+          onClick={() => setView(v.key)}
+        >
+          {v.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const activityLog = hasActivity && (
+    <div className={`brain-activity-log${logCollapsed ? ' collapsed' : ''}`}>
+      <button
+        type="button"
+        className="brain-activity-log-header"
+        onClick={() => setLogCollapsed((c) => !c)}
+        aria-expanded={!logCollapsed}
+        aria-label={logCollapsed ? 'Expand memory activity log' : 'Collapse memory activity log'}
+      >
+        {act.processing && <span className="brain-activity-log-spinner" />}
+        <span className="brain-activity-log-title">{act.processing ? 'Updating memory' : 'Memory activity'}</span>
+        <svg className={`brain-log-chevron${logCollapsed ? ' collapsed' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {!logCollapsed && (
+        <div className="brain-activity-log-body" ref={logScroll.containerRef} onScroll={logScroll.onScroll}>
+          {displayEvents.map((e) => (
+            <div key={e.seq} className={`brain-log-line brain-log-${e.type}`}>
+              <span className="brain-log-ts">{e.ts}</span>
+              <span className="brain-log-text">{e.text}</span>
+            </div>
+          ))}
+          {act.stream && detailedLogs && (
+            <div className="brain-log-line brain-log-stream">
+              <span className="brain-log-text">{act.stream}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // --- Non-graph views ------------------------------------------------------
+  if (view !== 'graph') {
+    let pane = null;
+    if (view === 'calendar') pane = <BrainCalendar brainMode={brainMode} onSelectNode={selectNodeById} />;
+    else if (view === 'journal') pane = <BrainJournal brainMode={brainMode} onSelectNode={selectNodeById} />;
+    else if (view === 'tasks') pane = <BrainTasks brainMode={brainMode} onSelectNode={selectNodeById} />;
+    else if (view === 'people') pane = <BrainPeople brainMode={brainMode} onSelectNode={selectNodeById} />;
+    else if (view === 'assistant') pane = <BrainAssistant brainMode={brainMode} />;
     return (
       <div className="brain-explorer">
-        <div className="brain-explorer-loading">
-          <span className="brain-explorer-loading-text">Loading brain graph…</span>
-        </div>
-        <button id="brain-explorer-close" className="brain-explorer-close" onClick={onClose} aria-label="Close brain explorer">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        {closeButton}
+        {tabBar}
+        <div className="brain-explorer-body">{pane}</div>
+        {activityLog}
       </div>
     );
   }
 
+  // --- Graph view -----------------------------------------------------------
+  if (loading) {
+    return (
+      <div className="brain-explorer">
+        {closeButton}
+        {tabBar}
+        <div className="brain-explorer-loading"><span className="brain-explorer-loading-text">Loading brain graph…</span></div>
+      </div>
+    );
+  }
   if (!sim) return null;
 
-  const { nodes, links } = sim;
+  const { nodes, links, legend } = sim;
   const pan = panRef.current;
   const svgWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const svgHeight = typeof window !== 'undefined' ? window.innerHeight - 60 : 800;
   const cx = svgWidth / 2 + pan.x;
   const cy = svgHeight / 2 + pan.y;
+  const rightOffset = (selected ? paneWidth : 0) + 19;
 
   return (
     <div className="brain-explorer">
-      <button id="brain-explorer-close" className="brain-explorer-close" onClick={onClose} aria-label="Close brain explorer">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-        <span className="brain-explorer-close-label">Back to chat</span>
-      </button>
+      {closeButton}
+      {tabBar}
+
+      <div className="brain-explorer-toolbar" style={{ right: `${rightOffset}px` }}>
+        <button id="brain-refresh-btn" className="brain-refresh-btn" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh brain view" title="Refresh brain view">
+          <svg className={`brain-refresh-icon${refreshing ? ' spinning' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10" />
+            <polyline points="1 20 1 14 7 14" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+          <span className="brain-refresh-label">Refresh</span>
+        </button>
+      </div>
 
       <div className={`brain-explorer-body ${selected ? 'split' : ''}`}>
         <svg
           ref={svgRef}
           className="brain-graph-svg"
-          width="100%"
-          height="100%"
+          width="100%" height="100%"
           onMouseDown={handleBgMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -680,65 +697,32 @@ export default function BrainExplorer({ brainMode, onClose }) {
           onWheel={handleWheel}
         >
           <defs>
-            <radialGradient id="hub-gradient" cx="40%" cy="40%">
-              <stop offset="0%" stopColor="#8b5cf6" />
-              <stop offset="100%" stopColor="#3b82f6" />
-            </radialGradient>
-            <radialGradient id="leaf-gradient" cx="40%" cy="40%">
-              <stop offset="0%" stopColor="#2dd4bf" />
-              <stop offset="100%" stopColor="#06b6d4" />
-            </radialGradient>
             <filter id="node-glow">
               <feGaussianBlur stdDeviation="3" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
           </defs>
           <rect className="brain-bg-rect" width="100%" height="100%" fill="#fafafc" />
           <g transform={`translate(${cx}, ${cy}) scale(${pan.zoom})`}>
             {links.map((l, i) => (
-              <line
-                key={i}
-                x1={l.source.x}
-                y1={l.source.y}
-                x2={l.target.x}
-                y2={l.target.y}
-                stroke="rgba(0,0,0,0.12)"
-                strokeWidth={1.5}
-              />
+              <line key={i} x1={l.source.x} y1={l.source.y} x2={l.target.x} y2={l.target.y}
+                stroke={(l.target.color && l.target.depth > 1) ? l.target.color : 'rgba(0,0,0,0.12)'}
+                strokeOpacity={l.target.depth > 1 ? 0.35 : 1} strokeWidth={1.5} />
             ))}
             {nodes.map((n) => (
               <g key={n.id} className="brain-node-group" style={{ cursor: 'pointer' }}>
+                <circle cx={n.x} cy={n.y} r={n.radius + 4} fill={n.color} opacity={0.15} filter="url(#node-glow)" />
                 <circle
-                  cx={n.x}
-                  cy={n.y}
-                  r={n.radius + 4}
-                  fill={n.isHub ? 'url(#hub-gradient)' : 'url(#leaf-gradient)'}
-                  opacity={0.15}
-                  filter="url(#node-glow)"
-                />
-                <circle
-                  cx={n.x}
-                  cy={n.y}
-                  r={n.radius}
-                  fill={n.isHub ? 'url(#hub-gradient)' : 'url(#leaf-gradient)'}
-                  stroke={selected?.id === n.id ? '#7c6fc4' : 'rgba(255,255,255,0.8)'}
-                  strokeWidth={2}
+                  cx={n.x} cy={n.y} r={n.radius}
+                  fill={n.color}
+                  stroke={selected?.id === n.id ? '#1e293b' : 'rgba(255,255,255,0.85)'}
+                  strokeWidth={selected?.id === n.id ? 3 : 2}
+                  onMouseDown={(e) => handleMouseDown(e, n)}
                   onClick={() => handleNodeClick(n)}
                   style={{ cursor: 'pointer' }}
                 />
-                <text
-                  x={n.x}
-                  y={n.y + n.radius + 14}
-                  textAnchor="middle"
-                  fill="rgba(30, 41, 59, 0.9)"
-                  fontSize="11"
-                  fontFamily="'Plus Jakarta Sans', sans-serif"
-                  fontWeight="600"
-                  style={{ pointerEvents: 'none', userSelect: 'none' }}
-                >
+
+                <text x={n.x} y={n.y + n.radius + 14} textAnchor="middle" fill="rgba(30,41,59,0.9)" fontSize="11" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="600" style={{ pointerEvents: 'none', userSelect: 'none' }}>
                   {n.label}
                 </text>
               </g>
@@ -752,120 +736,71 @@ export default function BrainExplorer({ brainMode, onClose }) {
             <div className="brain-editor-header">
               {isRenaming ? (
                 <div className="brain-editor-rename-form">
-                  <input
-                    type="text"
-                    className="brain-editor-rename-input"
-                    value={newName}
+                  <input type="text" className="brain-editor-rename-input" value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRenameSave();
-                      if (e.key === 'Escape') setIsRenaming(false);
-                    }}
-                    autoFocus
-                  />
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSave(); if (e.key === 'Escape') setIsRenaming(false); }}
+                    autoFocus />
                   <button className="brain-editor-rename-btn confirm" onClick={handleRenameSave} aria-label="Confirm rename" disabled={saving}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                   </button>
                   <button className="brain-editor-rename-btn cancel" onClick={() => setIsRenaming(false)} aria-label="Cancel rename" disabled={saving}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                   </button>
                 </div>
               ) : (
                 <div className="brain-editor-filename-container">
                   <span className="brain-editor-filename">{selected.label || selected.id}</span>
-                  {selected.id !== 'User' && selected.id !== 'Assistant' && (
-                    <button
-                      className="brain-editor-rename-toggle"
-                      onClick={() => {
-                        setNewName(selected.label || selected.id);
-                        setIsRenaming(true);
-                      }}
-                      aria-label="Rename node"
-                    >
+                  {selected.id !== ROOT_ID && (
+                    <button className="brain-editor-rename-toggle" onClick={() => { setNewName(selected.label || selected.id); setIsRenaming(true); }} aria-label="Rename node">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                       </svg>
                     </button>
                   )}
                 </div>
               )}
-              <button
-                id="brain-editor-close"
-                className="brain-editor-close-btn"
-                onClick={() => setSelected(null)}
-                aria-label="Close editor"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+              <button id="brain-editor-close" className="brain-editor-close-btn" onClick={() => setSelected(null)} aria-label="Close editor">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
             <div className="brain-editor-tabs">
-              <button
-                className={`brain-editor-tab-btn ${editorTab === 'preview' ? 'active' : ''}`}
-                onClick={() => setEditorTab('preview')}
-              >
-                Preview
-              </button>
-              <button
-                className={`brain-editor-tab-btn ${editorTab === 'edit' ? 'active' : ''}`}
-                onClick={() => setEditorTab('edit')}
-              >
-                Edit
-              </button>
+              <button className={`brain-editor-tab-btn ${editorTab === 'preview' ? 'active' : ''}`} onClick={() => setEditorTab('preview')}>Preview</button>
+              <button className={`brain-editor-tab-btn ${editorTab === 'edit' ? 'active' : ''}`} onClick={() => setEditorTab('edit')}>Edit</button>
             </div>
             {editorTab === 'preview' ? (
-              <div
-                className="brain-editor-content brain-editor-preview markdown-body"
-                dangerouslySetInnerHTML={{ __html: marked.parse(editorContent || '*No content*') }}
-              />
+              <div className="brain-editor-content brain-editor-preview markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(editorContent || '*No content*') }} />
             ) : (
-              <textarea
-                id="brain-editor-textarea"
-                className="brain-editor-content"
-                value={editorContent}
-                onChange={(e) => setEditorContent(e.target.value)}
-              />
+              <textarea id="brain-editor-textarea" className="brain-editor-content" value={editorContent} onChange={(e) => setEditorContent(e.target.value)} />
             )}
+
+            {nodeRefs && (nodeRefs.calendar.length > 0 || nodeRefs.journal.length > 0 || nodeRefs.assistant) && (
+              <div className="brain-refs-panel">
+                <div className="brain-refs-title">Referenced by</div>
+                {nodeRefs.calendar.map((c, i) => (
+                  <div key={`c${i}`} className="brain-ref-line"><span className="brain-ref-kind cal">Calendar</span>{c.text}</div>
+                ))}
+                {nodeRefs.journal.map((j, i) => (
+                  <div key={`j${i}`} className="brain-ref-line"><span className="brain-ref-kind jrn">{j.date}</span>{j.text}</div>
+                ))}
+                {nodeRefs.assistant && (
+                  <div className="brain-ref-line"><span className="brain-ref-kind asst">Assistant</span>A behaviour rule references this node.</div>
+                )}
+              </div>
+            )}
+
             <div className="brain-editor-actions">
-              {CORE_HUBS.includes(selected.id) ? (
-                <button
-                  id="brain-editor-reset"
-                  className="brain-editor-reset-btn"
-                  onClick={handleReset}
-                  disabled={saving}
-                >
-                  Reset
-                </button>
-              ) : (
-                <button
-                  id="brain-editor-delete"
-                  className="brain-editor-delete-btn"
-                  onClick={handleDelete}
-                  disabled={saving}
-                >
-                  Delete
-                </button>
+              {selected.id !== ROOT_ID && (
+                <button id="brain-editor-delete" className="brain-editor-delete-btn" onClick={handleDelete} disabled={saving}>Delete</button>
               )}
-              <button
-                id="brain-editor-save"
-                className="brain-editor-save-btn"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
+               <button id="brain-editor-save" className="brain-editor-save-btn" onClick={handleSave} disabled={saving}>Save</button>
             </div>
           </div>
         )}
       </div>
+
+
+      {activityLog}
     </div>
   );
 }

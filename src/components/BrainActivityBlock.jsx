@@ -10,8 +10,8 @@ export default function BrainActivityBlock({ activity }) {
   if (!activity) return null;
 
   const { routing_reasoning: reasoning, files_read, files_written, files_deleted } = activity;
-  const hasContent = reasoning || files_read?.length || files_written?.length || files_deleted?.length;
-  if (!hasContent) return null;
+  const hasFiles = files_read?.length || files_written?.length || files_deleted?.length;
+  if (!hasFiles) return null;
 
   return (
     <div className={`brain-activity-block ${open ? 'open' : ''}`}>

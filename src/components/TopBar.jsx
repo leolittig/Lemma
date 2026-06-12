@@ -11,6 +11,7 @@ export default function TopBar({
   onOpenSettings,
   onToggleBrainExplorer,
   showBrainExplorer,
+  brainProcessing, // true while the memory model is updating the brain
   modelPickerProps, // forwarded to ModelPicker (see App.jsx)
 }) {
   return (
@@ -42,15 +43,31 @@ export default function TopBar({
       </div>
       <ModelPicker {...modelPickerProps} />
       {onToggleBrainExplorer && (
-        <button
-          id="brain-toggle-btn"
-          className={`brain-toggle-btn${showBrainExplorer ? ' active' : ''}`}
-          onClick={onToggleBrainExplorer}
-          aria-label={showBrainExplorer ? 'Close brain explorer' : 'Open brain explorer'}
-          title="Brain Explorer"
-        >
-          Brain
-        </button>
+        <div className="brain-toolbar-cluster">
+          {brainProcessing && (
+            <span
+              className="brain-updating-spinner"
+              role="status"
+              aria-label="Updating memory"
+              title="Updating memory…"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+            </span>
+          )}
+          <button
+            id="brain-toggle-btn"
+            className={`brain-toggle-btn${showBrainExplorer ? ' active' : ''}`}
+            onClick={onToggleBrainExplorer}
+            aria-label={showBrainExplorer ? 'Close brain explorer' : 'Open brain explorer'}
+            title="Brain Explorer"
+          >
+            Brain
+          </button>
+        </div>
       )}
       <button className="settings-btn" onClick={onOpenSettings} aria-label="Open settings">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

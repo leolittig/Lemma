@@ -119,7 +119,50 @@ export async function uploadAttachment(file) {
 export async function fetchBrainGraph(mode) {
   const res = await fetch(`/api/brain/graph?mode=${encodeURIComponent(mode)}`);
   if (!res.ok) throw new Error('Brain graph fetch failed');
-  return res.json(); // { nodes: [...], links: [...] }
+  return res.json(); // { nodes: [...], links: [...], processing: bool }
+}
+
+// The live activity feed for the background memory update — drives the app-bar
+// spinner and the brain view's real-time log.
+export async function fetchBrainActivity() {
+  const res = await fetch('/api/brain/activity');
+  if (!res.ok) throw new Error('Brain activity fetch failed');
+  return res.json(); // { processing: bool, events: [...], stream: "" }
+}
+
+// Whether the brain has been set up (root node named), and the user's name.
+export async function fetchBrainStatus(mode) {
+  const res = await fetch(`/api/brain/status?mode=${encodeURIComponent(mode)}`);
+  if (!res.ok) throw new Error('Brain status fetch failed');
+  return res.json(); // { initialized, user_name }
+}
+
+// Create the single root node named after the user (first-boot prompt).
+export async function initBrain(mode, name) {
+  const res = await postJSON(`/api/brain/init?mode=${encodeURIComponent(mode)}`, { name });
+  if (!res.ok) throw new Error('Brain init failed');
+  return res.json();
+}
+
+// The Calendar entity: a chronological list of dated entries.
+export async function fetchBrainCalendar(mode) {
+  const res = await fetch(`/api/brain/calendar?mode=${encodeURIComponent(mode)}`);
+  if (!res.ok) throw new Error('Brain calendar fetch failed');
+  return res.json(); // { events: [...] }
+}
+
+// The Journal entity: day sections (newest first).
+export async function fetchBrainJournal(mode) {
+  const res = await fetch(`/api/brain/journal?mode=${encodeURIComponent(mode)}`);
+  if (!res.ok) throw new Error('Brain journal fetch failed');
+  return res.json(); // { days: [...] }
+}
+
+// Where the off-grid entities reference a node (via @mentions).
+export async function fetchBrainNodeRefs(mode, filename) {
+  const res = await fetch(`/api/brain/node_refs?mode=${encodeURIComponent(mode)}&filename=${encodeURIComponent(filename)}`);
+  if (!res.ok) throw new Error('Brain node refs fetch failed');
+  return res.json(); // { calendar:[], journal:[], assistant:bool }
 }
 
 export async function fetchBrainFile(mode, filename) {

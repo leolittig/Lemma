@@ -54,6 +54,10 @@ export function useSettings() {
   const [brainEnabled, setBrainEnabled] = usePersistentState(
     'brain_enabled', loadBool(true), saveBool);
 
+  // UI preference: whether memory logs in the explorer are detailed or simplified.
+  const [detailedLogs, setDetailedLogs] = usePersistentState(
+    'detailed_logs', loadBool(false), saveBool);
+
   return {
     systemPrompt, setSystemPrompt,
     temperature, setTemperature,
@@ -63,5 +67,6 @@ export function useSettings() {
     smartContext, setSmartContext,
     sidebarCollapsed, setSidebarCollapsed,
     brainEnabled, setBrainEnabled,
+    detailedLogs, setDetailedLogs,
   };
 }

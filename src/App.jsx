@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect } from 'react';
 
+import * as api from './api/client';
 import { useSettings } from './hooks/useSettings';
 import { useModels } from './hooks/useModels';
 import { useAttachments } from './hooks/useAttachments';
@@ -16,6 +17,7 @@ import { useAutoScroll } from './hooks/useAutoScroll';
 import { useMessageFlip } from './hooks/useMessageFlip';
 import { useConversations } from './hooks/useConversations';
 import { useChat } from './hooks/useChat';
+import { useBrainActivity } from './hooks/useBrainActivity';
 
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
@@ -25,6 +27,9 @@ import SettingsModal from './components/SettingsModal';
 import AddModelModal from './components/AddModelModal';
 import ModelLoadingOverlay from './components/ModelLoadingOverlay';
 import BrainExplorer from './components/BrainExplorer';
+import BrainNameSetup from './components/BrainNameSetup';
+
+const BRAIN_MODE = 'active';
 
 export default function App() {
   const settings = useSettings();
@@ -41,6 +46,7 @@ export default function App() {
   });
   const chat = useChat({ conversations, settings, attachments, scroll });
   const registerMessageRef = useMessageFlip(conversations.history);
+  const brainActivity = useBrainActivity(settings.brainEnabled);
 
   // Keep the view following the newest content while the scroll lock is on.
   useEffect(() => {
@@ -52,6 +58,35 @@ export default function App() {
   const [showAddModel, setShowAddModel] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showBrainExplorer, setShowBrainExplorer] = useState(false);
+  // null = unknown/loading, true/false = whether the root node is set up.
+  const [brainInitialized, setBrainInitialized] = useState(null);
+
+  // Check setup state at boot (and when the brain is toggled on). If there's no
+  // brain yet, a full-screen name prompt appears before anything else.
+  useEffect(() => {
+    if (!settings.brainEnabled) { setBrainInitialized(null); return; }
+    let cancelled = false;
+    let retryTimer = null;
+
+    const checkStatus = () => {
+      api.fetchBrainStatus(BRAIN_MODE)
+        .then((s) => {
+          if (!cancelled) setBrainInitialized(!!s.initialized);
+        })
+        .catch((err) => {
+          console.error('Failed to fetch brain status, retrying...', err);
+          if (!cancelled) {
+            retryTimer = setTimeout(checkStatus, 3000);
+          }
+        });
+    };
+
+    checkStatus();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [settings.brainEnabled]);
 
   const handleSelectModel = async (model) => {
     setShowModelPicker(false);
@@ -98,6 +133,7 @@ export default function App() {
         onOpenSettings={() => setShowSettings(true)}
         onToggleBrainExplorer={settings.brainEnabled ? (() => setShowBrainExplorer((v) => !v)) : null}
         showBrainExplorer={showBrainExplorer && settings.brainEnabled}
+        brainProcessing={brainActivity.processing}
         modelPickerProps={{
           open: showModelPicker,
           onToggle: handleToggleModelPicker,
@@ -126,8 +162,11 @@ export default function App() {
         <div className="app-container">
           {showBrainExplorer ? (
             <BrainExplorer
-              brainMode="active"
+              brainMode={BRAIN_MODE}
+              activity={brainActivity}
+              detailedLogs={settings.detailedLogs}
               onClose={() => setShowBrainExplorer(false)}
+              onReset={() => { setBrainInitialized(false); setShowBrainExplorer(false); }}
             />
           ) : (
             <>
@@ -158,6 +197,10 @@ export default function App() {
             onClose={() => setShowSettings(false)}
             settings={settings}
             onReloadModel={handleReloadModel}
+            onReset={() => {
+              setBrainInitialized(false);
+              setShowSettings(false);
+            }}
           />
           {models.isChangingModel && <ModelLoadingOverlay />}
           <AddModelModal
@@ -167,6 +210,13 @@ export default function App() {
           />
         </div>
       </div>
+
+      {settings.brainEnabled && brainInitialized === false && (
+        <BrainNameSetup
+          brainMode={BRAIN_MODE}
+          onDone={() => setBrainInitialized(true)}
+        />
+      )}
     </div>
   );
 }
