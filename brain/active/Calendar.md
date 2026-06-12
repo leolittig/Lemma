@@ -1,14 +1,11 @@
 ---
-created: 2026-06-11 18:34
-updated: 2026-06-11 18:34
-category: hub
+created: 2026-06-12 00:23
+updated: 2026-06-12 00:23
+type: calendar
 ---
 
 # Calendar
 
-Core hub for deadlines, commitments, assignments, events, and birthdays.
+Every dated fact, past and future. Each entry @mentions the node it concerns.
 
-## Content / Logs
-- [2026-06-11 18:34] **System**: Calendar initialized.
-
-## Connections & Links
+## Entries

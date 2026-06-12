@@ -1,14 +1,15 @@
 ---
-created: 2026-06-11 18:34
-updated: 2026-06-11 18:34
-category: hub
+created: 2026-06-12 00:23
+updated: 2026-06-12 00:23
+type: user
+name: Leo
 ---
 
-# User
+# Leo
 
-The root hub for all information about the user.
+The root of the knowledge graph — everything the brain knows about Leo.
 
 ## Content / Logs
-- [2026-06-11 18:34] **System**: Memory graph initialized.
+- [2026-06-12 00:23] **System**: Brain initialized for Leo.
 
 ## Connections & Links

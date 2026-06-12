@@ -1,5 +1,6 @@
 {
-  "Calendar": "Core hub for deadlines, commitments, assignments, events, and birthdays.",
-  "User": "The root hub for all information about the user.",
-  "Assistant": "The assistant hub storing personality parameters, tone guidelines, and user preferences."
+  "Calendar": "Every dated fact, past and future. Each entry @mentions the node it concerns.",
+  "Journal": "A running daily log. Each day is a section; past days are read-only.",
+  "User": "The root of the knowledge graph \u2014 everything the brain knows about Leo.",
+  "Assistant": "How I (the assistant) should behave: persona, tone, and the user's response\npreferences. Not part of"
 }

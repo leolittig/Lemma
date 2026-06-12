@@ -1,14 +1,18 @@
 ---
-created: 2026-06-11 18:34
-updated: 2026-06-11 18:34
-category: hub
+created: 2026-06-12 00:23
+updated: 2026-06-12 00:23
+type: assistant
 ---
 
 # Assistant
 
-The assistant hub storing personality parameters, tone guidelines, and user preferences.
+How I (the assistant) should behave: persona, tone, and the user's response
+preferences. Not part of the knowledge graph.
 
-## Content / Logs
-- [2026-06-11 18:34] **System**: Assistant memory profile initialized.
+## Persona & Tone
 
-## Connections & Links
+## Response Preferences
+- (timezone, units, language/style, chat preferences go here)
+
+## Conditional Rules
+- (e.g. "When we talk about @SomeTopic, do …")
