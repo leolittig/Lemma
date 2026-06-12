@@ -31,9 +31,21 @@ class RenameFileRequest(BaseModel):
     new_filename: str
 
 
+class BrainInitRequest(BaseModel):
+    name: str
+
+
 def _resolve_mode(mode: str = None) -> str:
     """Use the provided mode or fall back to the manager's active mode."""
     return mode if mode else manager.active_mode
+
+
+def _parse_tags(raw) -> list:
+    """Parse a frontmatter tags value ('[a, b]' or 'a, b') into a list."""
+    if isinstance(raw, list):
+        return [str(t).strip() for t in raw if str(t).strip()]
+    s = str(raw or "").strip().strip("[]")
+    return [t.strip().strip("'\"") for t in s.split(",") if t.strip()]
 
 
 @router.post("/api/brain/mode")
@@ -138,6 +150,55 @@ async def delete_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/brain/activity")
+async def get_activity():
+    """Live feed of the background memory update: the in-flight flag, recent
+    discrete log lines, and the model's current generation text."""
+    return storage_brain.get_activity()
+
+
+@router.get("/api/brain/status")
+async def get_status(mode: str = Query(default=None)):
+    """Whether the brain has been set up (root named) and the user's name."""
+    resolved_mode = _resolve_mode(mode)
+    return {
+        "initialized": storage_brain.is_initialized(resolved_mode),
+        "user_name": storage_brain.get_user_name(resolved_mode),
+    }
+
+
+@router.post("/api/brain/init")
+async def init_brain(req: BrainInitRequest, mode: str = Query(default=None)):
+    """Create the single root node named after the user (first-boot prompt)."""
+    resolved_mode = _resolve_mode(mode)
+    try:
+        storage_brain.init_root(resolved_mode, req.name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "ok", "user_name": storage_brain.get_user_name(resolved_mode)}
+
+
+@router.get("/api/brain/calendar")
+async def get_calendar(mode: str = Query(default=None)):
+    """The Calendar entity parsed into a chronological list of dated entries."""
+    return {"events": storage_brain.parse_calendar(_resolve_mode(mode))}
+
+
+@router.get("/api/brain/journal")
+async def get_journal(mode: str = Query(default=None)):
+    """The Journal entity parsed into day sections (newest first)."""
+    return {"days": storage_brain.parse_journal(_resolve_mode(mode))}
+
+
+@router.get("/api/brain/node_refs")
+async def get_node_refs(filename: str = Query(...), mode: str = Query(default=None)):
+    """Where the off-grid entities reference this node (via @mentions)."""
+    stem = filename[:-3] if filename.endswith(".md") else filename
+    if "/" in stem or "\\" in stem:
+        raise HTTPException(status_code=400, detail="Invalid node name.")
+    return storage_brain.node_refs(_resolve_mode(mode), stem)
+
+
 @router.get("/api/brain/graph")
 async def get_graph(mode: str = Query(default=None)):
     resolved_mode = _resolve_mode(mode)
@@ -149,27 +210,36 @@ async def get_graph(mode: str = Query(default=None)):
     nodes = []
     links = []
     if brain_dir.exists() and brain_dir.is_dir():
-        md_files = list(brain_dir.glob("*.md"))
+        # Off-grid entities (Assistant/Calendar/Journal) are real files but are
+        # NOT graph nodes — exclude them and any edge that touches them.
+        md_files = [f for f in brain_dir.glob("*.md")
+                    if f.stem not in storage_brain.OFF_GRID_FILES]
         stems = {f.stem for f in md_files}
+
+        event_counts = storage_brain.calendar_mention_counts(resolved_mode)
 
         nodes_data = {}
         for file_path in md_files:
             stem = file_path.stem
             try:
-                content = file_path.read_text(encoding="utf-8")
-                parsed = storage_brain.parse_markdown_node(content)
+                parsed = storage_brain.parse_markdown_node(file_path.read_text(encoding="utf-8"))
+                fm = parsed.get("frontmatter", {})
                 nodes_data[stem] = {
                     "title": parsed.get("title", ""),
                     "description": parsed.get("description", ""),
                     "connections": parsed.get("connections", []),
-                    "created": parsed.get("frontmatter", {}).get("created", ""),
-                    "updated": parsed.get("frontmatter", {}).get("updated", ""),
-                    "category": parsed.get("frontmatter", {}).get("category", "leaf"),
+                    "created": fm.get("created", ""),
+                    "updated": fm.get("updated", ""),
+                    "type": fm.get("type", "leaf"),
+                    "status": fm.get("status", ""),
+                    "tags": _parse_tags(fm.get("tags", "")),
+                    "relationship": fm.get("relationship", ""),
                 }
             except Exception:
                 nodes_data[stem] = {
                     "title": "", "description": "", "connections": [],
-                    "created": "", "updated": "", "category": "leaf",
+                    "created": "", "updated": "", "type": "leaf",
+                    "status": "", "tags": [], "relationship": "",
                 }
 
         degrees = {stem: 0 for stem in stems}
@@ -182,18 +252,21 @@ async def get_graph(mode: str = Query(default=None)):
 
         for stem in stems:
             data = nodes_data[stem]
-            label = data["title"] if data["title"] else stem
             nodes.append({
                 "id": stem,
-                "label": label,
+                "label": data["title"] or stem,
                 "description": data["description"],
                 "val": degrees[stem],
-                "category": data["category"],
+                "type": data["type"],
+                "status": data["status"],
+                "tags": data["tags"],
+                "relationship": data["relationship"],
                 "created": data["created"],
                 "updated": data["updated"],
+                "event_count": event_counts.get(stem, 0),
             })
 
-    return {"nodes": nodes, "links": links}
+    return {"nodes": nodes, "links": links, "processing": storage_brain.is_processing()}
 
 
 @router.post("/api/brain/rename")

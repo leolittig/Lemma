@@ -209,14 +209,23 @@ def _run_routing(user_text: str, mode: str) -> dict:
     return result
 
 
-def _generate_once(model, processor, prompt: str, max_tokens: int) -> str:
-    """One non-streamed completion for the internal brain calls."""
+def _generate_once(model, processor, prompt: str, max_tokens: int, on_token=None) -> str:
+    """One completion for the internal brain calls.
+
+    `on_token`, when given, is called with each chunk's text as it streams —
+    used to surface the memory model's live output to the UI. It is a passive
+    observer; the returned text and everything else is unchanged.
+    """
     seq = [{"role": "user", "content": prompt}]
     formatted = apply_chat_template(processor, model.config, seq)
     try:
-        chunks = [chunk.text for chunk in stream_generate(
-            model, processor, formatted,
-            max_tokens=max_tokens, max_kv_size=INTERNAL_MAX_KV)]
+        chunks = []
+        for chunk in stream_generate(
+                model, processor, formatted,
+                max_tokens=max_tokens, max_kv_size=INTERNAL_MAX_KV):
+            chunks.append(chunk.text)
+            if on_token:
+                on_token(chunk.text)
     finally:
         # Free the generation's GPU buffers right away — with two models
         # resident, leftover caches from consecutive generations are what
@@ -246,13 +255,18 @@ def _build_system_prompt(conv_system_prompt: str, brain_mode, files_to_read: lis
         persona = re.sub(r'^---\s*\n.*?\n---\s*\n', '', persona, flags=re.DOTALL)
         parts.append(f"[Assistant Persona]\n{persona.strip()}")
 
-    # 2. Retrieved memory context.
+    # 2. Today's journal, so the assistant recalls the day's interactions.
+    today_journal = storage_brain.get_today_journal_text(brain_mode)
+    if today_journal:
+        parts.append(f"[Today's Journal]\n{today_journal}")
+
+    # 3. Retrieved memory context.
     for fname in files_to_read:
         content = _read_brain_file(brain_mode, fname)
         if content:
             parts.append(f"[Memory: {fname}]\n{content.strip()}")
 
-    # 3. Original conversation system prompt.
+    # 4. Original conversation system prompt.
     if conv_system_prompt:
         parts.append(conv_system_prompt)
 
@@ -263,7 +277,98 @@ def _run_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
                          assistant_text: str, brain_activity: dict):
     """Update the memory graph after a turn. Runs in a background thread.
 
-    The brain manager model gets the instruction manual, the brain map, the
+    Wraps the actual work in a processing marker so the Brain Explorer can show
+    that the graph is being updated (and is briefly stale) until it refreshes.
+    """
+    storage_brain.begin_processing()
+    try:
+        _do_post_processing(cid, msg_pos, mode, user_text, assistant_text, brain_activity)
+    finally:
+        storage_brain.end_processing()
+
+
+def _get_manual_for_turn(mode: str, user_text: str, assistant_text: str, files_read: list) -> str:
+    """Load only the relevant manual instruction files for a given conversation turn."""
+    instructions_dir = config.PROJECT_ROOT / "server" / "brain" / "instructions"
+    
+    # Always load general.md
+    general_path = instructions_dir / "general.md"
+    manual_content = []
+    loaded_files = []
+    try:
+        if general_path.exists():
+            manual_content.append(general_path.read_text(encoding="utf-8"))
+            loaded_files.append("general.md")
+    except Exception as e:
+        print(f"Error reading general manual: {e}")
+
+    # Check frontmatter types of read files
+    read_types = set()
+    for fname in files_read:
+        content = _read_brain_file(mode, fname)
+        if content:
+            m = re.search(r"^type:\s*(\w+)", content, re.MULTILINE)
+            if m:
+                read_types.add(m.group(1).lower())
+
+    combined_text = f"{user_text} {assistant_text}".lower()
+
+    file_mappings = [
+        ("people.md", "person" in read_types or any(k in combined_text for k in [
+            "friend", "brother", "sister", "mom", "dad", "mother", "father", 
+            "girlfriend", "boyfriend", "husband", "wife", "partner", "son", 
+            "daughter", "cousin", "family", "born", "relationship", "meet", 
+            "who is", "introduced"
+        ])),
+        ("tasks.md", "task" in read_types or any(k in combined_text for k in [
+            "todo", "to-do", "task", "project", "assignment", "homework", 
+            "exam", "test", "errand", "obligation", "deadline", "due", 
+            "status", "complete", "finish", "done", "need to"
+        ])),
+        ("activities.md", "activity" in read_types or any(k in combined_text for k in [
+            "job", "work", "school", "university", "college", "class", 
+            "gig", "business", "hobby", "sport", "club", "practice", "play", "run"
+        ])),
+        ("groups.md", "group" in read_types or any(k in combined_text for k in [
+            "friends", "family", "group", "team", "classmates", "coworkers"
+        ])),
+        ("calendar.md", "Calendar" in files_read or any(k in combined_text for k in [
+            "birthday", "anniversary", "christmas", "valentine", "calendar", 
+            "event", "schedule", "date", "next week", "tomorrow", "yesterday", 
+            "holiday", "observance", "beliefs", "religion", "christian", 
+            "catholic", "church", "past", "future", "january", "february", 
+            "march", "april", "may", "june", "july", "august", "september", 
+            "october", "november", "december"
+        ])),
+        ("journal.md", "Journal" in files_read or any(k in combined_text for k in [
+            "journal", "diary", "log", "daily", "today", "yesterday", 
+            "happened today", "notable"
+        ])),
+        ("assistant.md", "Assistant" in files_read or any(k in combined_text for k in [
+            "always remind", "brief", "metric", "units", "assistant", 
+            "behave", "respond", "prefer", "timezone"
+        ])),
+    ]
+
+    for fname, should_include in file_mappings:
+        if should_include:
+            fpath = instructions_dir / fname
+            try:
+                if fpath.exists():
+                    manual_content.append(fpath.read_text(encoding="utf-8"))
+                    loaded_files.append(fname)
+            except Exception as e:
+                print(f"Error reading {fname}: {e}")
+
+    print(f"[Brain Manager] Loaded instruction files for turn: {', '.join(loaded_files)}")
+    return "\n\n---\n\n".join(manual_content)
+
+
+def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
+                        assistant_text: str, brain_activity: dict):
+    """The body of the memory-graph update.
+
+    The brain manager model gets only the relevant instruction files, the brain map, the
     contents of the files routing deemed relevant (so updates don't lose
     existing entries), and the conversation turn; it answers with CRUD
     commands (=== CREATE/UPDATE/DELETE file.md ===) that are executed on the
@@ -275,17 +380,21 @@ def _run_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
     if not model or not processor:
         return
 
-    manual_path = config.PROJECT_ROOT / "server" / "brain" / "instruction_manual.md"
-    try:
-        manual = manual_path.read_text(encoding="utf-8")
-    except Exception:
-        manual = ""
+    manual = _get_manual_for_turn(
+        mode, user_text, assistant_text,
+        list(brain_activity.get("files_read", []))
+    )
 
-    # Current contents of the relevant files, so UPDATE (a full overwrite)
-    # can preserve their existing entries.
+    # Current contents of the relevant files, so a full-file UPDATE preserves
+    # existing entries. Always include the root (User) and Calendar so the model
+    # sees the current structure and never clobbers the date table on an edit.
     file_sections = []
     remaining = POST_PROCESSING_CONTEXT_CHARS
-    for fname in brain_activity.get("files_read", []):
+    seen_files = set()
+    for fname in list(brain_activity.get("files_read", [])) + ["User", "Calendar"]:
+        if fname in seen_files:
+            continue
+        seen_files.add(fname)
         content = _read_brain_file(mode, fname)
         if content and remaining > 0:
             content = content[:remaining]
@@ -311,14 +420,22 @@ def _run_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
         f"Output your update commands now:"
     )
 
+    storage_brain.log_activity("status", "Deciding what to write to memory…")
     try:
         with generation_lock:
-            response_text = _generate_once(model, processor, prompt, max_tokens=1500)
+            response_text = _generate_once(
+                model, processor, prompt, max_tokens=1500,
+                on_token=storage_brain.append_stream)
     except Exception as e:
         print(f"Post-processing generation error: {e}")
+        storage_brain.log_activity("error", f"Memory update failed: {e}")
         return
 
     files_written, files_deleted = _execute_brain_commands(mode, response_text)
+    if files_written or files_deleted:
+        storage_brain.log_activity("status", "Memory updated.")
+    else:
+        storage_brain.log_activity("status", "No changes needed.")
 
     # Fold the writes into the message's brain_activity record.
     if files_written or files_deleted:
@@ -339,31 +456,60 @@ def _execute_brain_commands(mode: str, response_text: str):
     """
     files_written = []
     files_deleted = []
-    cmd_pattern = re.compile(r'===\s*(CREATE|UPDATE|DELETE)\s+(\S+)\s*===')
+    # CREATE/UPDATE/DELETE <file>, plus the Journal-only commands: JOURNAL
+    # (append today) and JOURNAL_EDIT <YYYY-MM-DD> (rewrite one past day).
+    cmd_pattern = re.compile(r'===\s*(CREATE|UPDATE|DELETE|JOURNAL_EDIT|JOURNAL|CALENDAR)\s*([^\s=]*)\s*===')
     matches = list(cmd_pattern.finditer(response_text))
 
     for i, match in enumerate(matches):
-        action, filename = match.group(1), match.group(2)
+        action, arg = match.group(1), match.group(2)
         start_idx = match.end()
         end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(response_text)
         content = response_text[start_idx:end_idx].strip()
 
         try:
-            if action in ("CREATE", "UPDATE"):
-                storage_brain.save_markdown_node(mode, filename, content)
-                files_written.append(filename)
+            if action == "CALENDAR":
+                storage_brain.append_calendar(mode, content)
+                if "Calendar" not in files_written:
+                    files_written.append("Calendar")
+                storage_brain.log_activity("calendar", "Added a calendar entry")
+            elif action == "JOURNAL":
+                storage_brain.append_journal(mode, content)
+                if "Journal" not in files_written:
+                    files_written.append("Journal")
+                storage_brain.log_activity("journal", "Added a journal entry")
+            elif action == "JOURNAL_EDIT":
+                storage_brain.edit_journal_day(mode, arg, content)
+                if "Journal" not in files_written:
+                    files_written.append("Journal")
+                storage_brain.log_activity("journal", f"Edited journal entry for {arg}")
+            elif action in ("CREATE", "UPDATE"):
+                # The Journal is append-only via the JOURNAL commands — never
+                # let a direct overwrite clobber its history.
+                if _stem(arg) == "Journal":
+                    storage_brain.log_activity("error", "Ignored a direct write to Journal (use JOURNAL).")
+                    continue
+                storage_brain.save_markdown_node(mode, arg, content)
+                files_written.append(arg)
+                verb = "Created" if action == "CREATE" else "Updated"
+                storage_brain.log_activity("write", f"{verb} {arg}")
             elif action == "DELETE":
+                filename = arg if arg.endswith(".md") else arg + ".md"
                 brain_dir = storage_brain.get_brain_dir(mode).resolve()
-                if not filename.endswith(".md"):
-                    filename += ".md"
                 target = (brain_dir / filename).resolve()
                 if target.is_relative_to(brain_dir) and target.exists():
                     target.unlink()
                     files_deleted.append(filename)
+                    storage_brain.log_activity("delete", f"Deleted {filename}")
         except Exception as e:
-            print(f"Post-processing command error ({action} {filename}): {e}")
+            print(f"Post-processing command error ({action} {arg}): {e}")
+            storage_brain.log_activity("error", f"Could not {action.lower()} {arg}: {e}")
 
     return files_written, files_deleted
+
+
+def _stem(filename: str) -> str:
+    return filename[:-3] if filename.endswith(".md") else filename
 
 
 def _save_user_turn(conv, msg: ChatRequest):

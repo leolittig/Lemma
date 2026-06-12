@@ -44,3 +44,13 @@ Thumbs.db
 # Tooling Caches
 .claude/
 .gemini/
+
+# Logs and temporary execution state
+*.log
+*.lock
+
+# Brain test/backup directories
+brain/_backup*/
+brain/*-brain/
+brain/everything-*/
+*audit_report.md
