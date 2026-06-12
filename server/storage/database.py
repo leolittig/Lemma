@@ -1,25 +1,23 @@
-"""Persistence layer for Lemma: conversations, messages, and uploaded files.
+"""Conversations and messages, stored in SQLite (chats.db).
 
-Kept free of any mlx / FastAPI imports so it can be unit-tested in isolation and
-reused by the backend without pulling in the (heavy) model stack.
+Schema:
+    conversations  one row per chat: title, model, system prompt, timestamps,
+                   and display metadata about context trimming.
+    messages       one row per message, ordered by `position` within its
+                   conversation. Attachment references are stored as JSON.
 
-Storage:
-  - chats.db  : SQLite database (conversations + messages)
-  - uploads/  : raw uploaded media, named "<uuid><ext>"; an attachment's `id`
-                IS that filename, so a file path is just uploads/<id>.
+Deleting a conversation cascades to its messages, and both deletion paths also
+remove the attachment files those messages referenced (via storage.uploads).
 """
 
 import json
-import shutil
 import sqlite3
 import uuid
-import mimetypes
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from pathlib import Path
 
-DB_FILE = Path("chats.db")
-UPLOADS_DIR = Path("uploads")
+from .. import config
+from . import uploads
 
 
 def _now() -> str:
@@ -27,9 +25,9 @@ def _now() -> str:
 
 
 @contextmanager
-def db():
+def _connect():
     """Short-lived connection; commits on clean exit, always closes."""
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn = sqlite3.connect(config.DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -40,8 +38,8 @@ def db():
 
 
 def init_db():
-    UPLOADS_DIR.mkdir(exist_ok=True)
-    with db() as conn:
+    """Create the tables if they don't exist yet. Called once at startup."""
+    with _connect() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS conversations (
@@ -70,6 +68,7 @@ def init_db():
                 role            TEXT,
                 text            TEXT,
                 attachments     TEXT,   -- JSON: [{id, kind, filename}]
+                brain_activity  TEXT,   -- JSON: {"files_read": [], "files_written": [], "routing_reasoning": ""}
                 position        INTEGER,
                 created_at      TEXT,
                 FOREIGN KEY (conversation_id)
@@ -77,14 +76,17 @@ def init_db():
             )
             """
         )
+        # Backfill the brain_activity column for databases created before it existed.
+        messages_cols = {r["name"] for r in conn.execute("PRAGMA table_info(messages)").fetchall()}
+        if "brain_activity" not in messages_cols:
+            conn.execute("ALTER TABLE messages ADD COLUMN brain_activity TEXT")
 
-
-# ── Conversations ─────────────────────────────────────────────────────────────
 
 def create_conversation(title=None, model=None, system_prompt="") -> str:
+    """Insert a new conversation and return its id."""
     cid = uuid.uuid4().hex
     now = _now()
-    with db() as conn:
+    with _connect() as conn:
         conn.execute(
             "INSERT INTO conversations (id, title, model, system_prompt, created_at, updated_at)"
             " VALUES (?, ?, ?, ?, ?, ?)",
@@ -94,7 +96,8 @@ def create_conversation(title=None, model=None, system_prompt="") -> str:
 
 
 def list_conversations() -> list:
-    with db() as conn:
+    """All conversations (without messages), most recently updated first."""
+    with _connect() as conn:
         rows = conn.execute(
             "SELECT id, title, model, updated_at FROM conversations ORDER BY updated_at DESC"
         ).fetchall()
@@ -103,12 +106,12 @@ def list_conversations() -> list:
 
 def get_conversation(cid: str):
     """Full conversation incl. ordered messages, or None if it doesn't exist."""
-    with db() as conn:
+    with _connect() as conn:
         conv = conn.execute("SELECT * FROM conversations WHERE id = ?", (cid,)).fetchone()
         if conv is None:
             return None
         msgs = conn.execute(
-            "SELECT role, text, attachments FROM messages"
+            "SELECT role, text, attachments, brain_activity FROM messages"
             " WHERE conversation_id = ? ORDER BY position ASC",
             (cid,),
         ).fetchall()
@@ -118,6 +121,7 @@ def get_conversation(cid: str):
             "role": m["role"],
             "text": m["text"],
             "attachments": json.loads(m["attachments"] or "[]"),
+            "brain_activity": json.loads(m["brain_activity"]) if m["brain_activity"] else None,
         }
         for m in msgs
     ]
@@ -131,7 +135,7 @@ def update_conversation(cid: str, **fields):
         return
     cols = ", ".join(f"{k} = ?" for k in fields)
     vals = list(fields.values()) + [_now(), cid]
-    with db() as conn:
+    with _connect() as conn:
         conn.execute(f"UPDATE conversations SET {cols}, updated_at = ? WHERE id = ?", vals)
 
 
@@ -139,7 +143,7 @@ def set_context_window(cid: str, out_ranges_json):
     """Persist the JSON list of out-of-context message ranges from the last turn,
     or None when nothing fell out. Pure display metadata — deliberately does not
     bump updated_at, so it never reorders the conversation list."""
-    with db() as conn:
+    with _connect() as conn:
         conn.execute(
             "UPDATE conversations SET context_out_ranges = ? WHERE id = ?",
             (out_ranges_json, cid),
@@ -148,79 +152,49 @@ def set_context_window(cid: str, out_ranges_json):
 
 def delete_conversation(cid: str):
     """Delete the conversation (cascades to messages) and its uploaded files."""
-    with db() as conn:
+    with _connect() as conn:
         rows = conn.execute(
             "SELECT attachments FROM messages WHERE conversation_id = ?", (cid,)
         ).fetchall()
         for r in rows:
             for att in json.loads(r["attachments"] or "[]"):
-                delete_upload(att.get("id"))
+                uploads.delete_upload(att.get("id"))
         conn.execute("DELETE FROM conversations WHERE id = ?", (cid,))
 
 
-# ── Messages ──────────────────────────────────────────────────────────────────
-
-def add_message(cid: str, role: str, text: str, attachments=None) -> int:
+def add_message(cid: str, role: str, text: str, attachments=None, brain_activity=None) -> int:
     """Append a message; returns its 0-based position. Bumps conversation.updated_at."""
     now = _now()
-    with db() as conn:
+    with _connect() as conn:
         pos = conn.execute(
             "SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM messages WHERE conversation_id = ?",
             (cid,),
         ).fetchone()["pos"]
         conn.execute(
-            "INSERT INTO messages (conversation_id, role, text, attachments, position, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (cid, role, text, json.dumps(attachments or []), pos, now),
+            "INSERT INTO messages (conversation_id, role, text, attachments, brain_activity, position, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (cid, role, text, json.dumps(attachments or []), json.dumps(brain_activity) if brain_activity is not None else None, pos, now),
         )
         conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, cid))
     return pos
 
 
+def update_message_brain_activity(cid: str, position: int, brain_activity: dict):
+    """Updates the brain_activity JSON of the message at msg_pos in the conversation."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE messages SET brain_activity = ? WHERE conversation_id = ? AND position = ?",
+            (json.dumps(brain_activity), cid, position)
+        )
+
+
 def clear_messages(cid: str):
-    with db() as conn:
+    """Delete every message in the conversation, plus their uploaded files."""
+    with _connect() as conn:
         rows = conn.execute(
             "SELECT attachments FROM messages WHERE conversation_id = ?", (cid,)
         ).fetchall()
         for r in rows:
             for att in json.loads(r["attachments"] or "[]"):
-                delete_upload(att.get("id"))
+                uploads.delete_upload(att.get("id"))
         conn.execute("DELETE FROM messages WHERE conversation_id = ?", (cid,))
-
-
-# ── Uploads ───────────────────────────────────────────────────────────────────
-
-def save_upload(fileobj, filename: str = "", content_type: str = "") -> dict:
-    """Persist an uploaded file under uploads/<uuid><ext>.
-
-    The returned `id` is the stored filename, so the file path is uploads/<id>.
-    `kind` is image | audio | file, inferred from the content type.
-    """
-    UPLOADS_DIR.mkdir(exist_ok=True)
-    ext = Path(filename or "").suffix or mimetypes.guess_extension(content_type or "") or ""
-    if (content_type or "").startswith("image/"):
-        kind = "image"
-    elif (content_type or "").startswith("audio/"):
-        kind = "audio"
-    else:
-        kind = "file"
-    uid = uuid.uuid4().hex + ext
-    dest = UPLOADS_DIR / uid
-    with dest.open("wb") as out:
-        shutil.copyfileobj(fileobj, out)
-    return {"id": uid, "kind": kind, "filename": filename or uid}
-
-
-def upload_path(uid: str) -> Path:
-    return UPLOADS_DIR / uid
-
-
-def delete_upload(uid):
-    if not uid:
-        return
-    try:
-        p = UPLOADS_DIR / uid
-        if p.exists():
-            p.unlink()
-    except Exception as e:  # pragma: no cover
-        print(f"Error deleting upload {uid}: {e}")

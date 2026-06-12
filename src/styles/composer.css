@@ -1,0 +1,138 @@
+/* The message input area (components/Composer.jsx): the form layout, the
+   attach button, the thinking toggle's label row, and the pending-attachment
+   chips. The textarea and send button use the element defaults in base.css;
+   the switch itself is in controls.css. */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 1.25rem 2rem 2.25rem 2rem;
+  box-sizing: border-box;
+  background-color: transparent;
+  flex-shrink: 0;
+}
+
+.composer-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  width: 100%;
+}
+
+/* Attach (paperclip) button — opts out of the global circular blue button. */
+button.attach-btn {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: transparent;
+  color: #6e6e73;
+  box-shadow: none;
+}
+
+button.attach-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #1a1a1a;
+}
+
+/* The "Thinking" label next to the on/off switch. */
+.thinking-toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 3rem;
+  padding: 0 0.25rem;
+  user-select: none;
+}
+
+.thinking-toggle-label {
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: #6e6e73;
+  transition: color 0.2s ease;
+}
+
+.thinking-toggle-container:hover .thinking-toggle-label {
+  color: #1a1a1a;
+}
+
+/* Pending attachment chips above the input. */
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.5rem;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 0.7rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  max-width: 220px;
+}
+
+.attachment-chip.uploading {
+  opacity: 0.7;
+}
+
+.chip-thumb {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.4rem;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.chip-icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 122, 255, 0.1);
+  color: #007aff;
+  border-radius: 0.4rem;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.chip-name {
+  font-size: 0.85rem;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgba(0, 122, 255, 0.2);
+  border-top-color: #007aff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+button.chip-remove {
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  color: #555;
+  font-size: 0.7rem;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+button.chip-remove:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: #1a1a1a;
+}

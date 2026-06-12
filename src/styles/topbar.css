@@ -1,0 +1,185 @@
+/* The app bar (components/TopBar.jsx): sidebar toggle and New Chat on the
+   left, the model name in the center, the settings gear on the right.
+   The model picker dropdown itself is styled in model-picker.css. */
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 2rem;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  /* Sit above .messages-area (z-index 12) so the model dropdown — which opens
+     downward into that region — renders on top and stays clickable, and so the
+     bar's drop shadow falls over the messages instead of being covered by them. */
+  position: relative;
+  z-index: 20;
+  box-shadow: 0 30px 30px rgba(0, 0, 0, 0.05);
+  height: 3.75rem;
+  box-sizing: border-box;
+}
+
+/* Left-side controls on the appbar: sidebar toggle + new chat button. */
+.topbar-left {
+  position: absolute;
+  left: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+button.topbar-icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: #555;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+}
+
+button.topbar-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #1a1a1a;
+}
+
+button.topbar-new-btn {
+  width: auto;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: rgba(0, 122, 255, 0.08);
+  color: #007aff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  border: none;
+  padding: 0 0.9rem;
+  flex-shrink: 0;
+}
+
+button.topbar-new-btn:hover {
+  background: rgba(0, 122, 255, 0.14);
+}
+
+/* The label collapses/expands by animating its own width + opacity, so the
+   button morphs smoothly between the "New chat" pill and the icon-only circle
+   — and it plays the same both ways (the global button transition handles the
+   padding/background/radius; this handles the text). */
+.topbar-new-label {
+  margin-left: 0.4rem;
+  max-width: 8rem;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  transition: max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              margin-left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Collapsed: icon-only, no pill background, circular hover — matches a round icon button. */
+button.topbar-new-btn.collapsed {
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #555;
+}
+
+button.topbar-new-btn.collapsed .topbar-new-label {
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+}
+
+button.topbar-new-btn.collapsed:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #1a1a1a;
+}
+
+.model-title-container {
+  position: relative;
+  display: inline-block;
+}
+
+.model-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: -0.01em;
+  transition: color 0.2s ease;
+}
+
+.model-title-container:hover .model-title {
+  color: #002955;
+}
+
+/* Dimmed trailing words of the model name (from the first word ending in 'b').
+   Sets its own colour so it stays grey even when the title is hovered. */
+.model-name-dim {
+  color: #b0b4ba;
+}
+
+.model-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%) translateX(12px);
+  background-color: rgba(26, 26, 26, 0.95);
+  color: #ffffff;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  transition: opacity 0.5s ease, transform 0.5s ease, visibility 0.5s;
+}
+
+.model-title-container:hover .model-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(-50%) translateX(8px);
+}
+
+button.settings-btn {
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: #555555 !important;
+  box-shadow: none !important;
+  position: absolute;
+  right: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  border: none !important;
+  transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+button.settings-btn:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #1a1a1a !important;
+  transform: none !important;
+}
+
+button.settings-btn:active {
+  background: rgba(0, 0, 0, 0.1) !important;
+  transform: scale(0.95) !important;
+}

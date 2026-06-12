@@ -1,0 +1,1273 @@
+/* The Brain Explorer (components/BrainExplorer.jsx) — full-screen interactive
+   force-directed graph with a slide-out file editor pane. Light theme. */
+
+.brain-explorer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #fafafc;
+  overflow: hidden;
+  animation: brainExplorerFadeIn 0.5s ease-out;
+}
+
+@keyframes brainExplorerFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Loading state. */
+.brain-explorer-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brain-explorer-loading-text {
+  color: rgba(30, 41, 59, 0.6);
+  font-size: 1rem;
+  font-weight: 600;
+  animation: thinkingPulse 1.4s ease-in-out infinite;
+}
+
+/* Close / back button. */
+button.brain-explorer-close {
+  position: absolute;
+  top: 1rem;
+  left: 1.2rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: rgba(30, 41, 59, 0.85);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+button.brain-explorer-close:hover {
+  background: #ffffff;
+  color: #1e293b;
+  border-color: rgba(0, 0, 0, 0.15);
+  transform: none;
+}
+
+button.brain-explorer-close:active {
+  transform: scale(0.96);
+}
+
+.brain-explorer-close-label {
+  white-space: nowrap;
+}
+
+/* Top-right toolbar: refresh button + background-update indicator. Its
+   `right` is set inline so it tracks the editor pane width and never overlaps
+   it; the transition matches the pane's slide animation. */
+.brain-explorer-toolbar {
+  position: absolute;
+  top: 1rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+button.brain-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: rgba(30, 41, 59, 0.85);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+button.brain-refresh-btn:hover:not(:disabled) {
+  background: #ffffff;
+  color: #1e293b;
+  border-color: rgba(0, 0, 0, 0.15);
+  transform: none;
+}
+
+button.brain-refresh-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+button.brain-refresh-btn:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.brain-refresh-icon {
+  flex-shrink: 0;
+}
+
+.brain-refresh-icon.spinning {
+  animation: brainRefreshSpin 0.8s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes brainRefreshSpin {
+  to { transform: rotate(360deg); }
+}
+
+.brain-refresh-label {
+  white-space: nowrap;
+}
+
+/* Bottom-left live log: what the memory model is doing, in real time. */
+.brain-activity-log {
+  position: absolute;
+  bottom: 1rem;
+  left: 1.2rem;
+  z-index: 10;
+  width: 340px;
+  max-width: calc(100% - 2.4rem);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+  animation: brainProcessingFadeIn 0.3s ease-out;
+}
+
+@keyframes brainProcessingFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+button.brain-activity-log-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: auto;
+  padding: 0.6rem 0.85rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.2s ease;
+}
+
+button.brain-activity-log-header:hover {
+  background: rgba(0, 0, 0, 0.02);
+  transform: none;
+}
+
+.brain-activity-log.collapsed button.brain-activity-log-header {
+  border-bottom: none;
+}
+
+.brain-activity-log-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(30, 41, 59, 0.85);
+}
+
+.brain-log-chevron {
+  flex-shrink: 0;
+  color: rgba(30, 41, 59, 0.45);
+  transition: transform 0.25s ease;
+}
+
+.brain-log-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.brain-activity-log-spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(124, 111, 196, 0.25);
+  border-top-color: #7c6fc4;
+  animation: brainSpin 0.7s linear infinite;
+}
+
+.brain-activity-log-body {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.5rem 0.85rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.brain-log-line {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(30, 41, 59, 0.8);
+}
+
+.brain-log-ts {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: rgba(30, 41, 59, 0.4);
+  font-size: 0.72rem;
+  padding-top: 0.05rem;
+}
+
+.brain-log-text {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.brain-log-write .brain-log-text { color: #0e9488; font-weight: 600; }
+.brain-log-delete .brain-log-text { color: #ef4444; font-weight: 600; }
+.brain-log-error .brain-log-text { color: #dc2626; font-weight: 600; }
+
+/* The model's live generation — shown monospace and dimmed, like raw thoughts. */
+.brain-log-stream .brain-log-text {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.72rem;
+  color: rgba(30, 41, 59, 0.55);
+  white-space: pre-wrap;
+}
+
+@keyframes brainSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Graph + optional editor side-by-side. */
+.brain-explorer-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brain-graph-svg {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+}
+.brain-graph-svg * {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+}
+
+/* Editor pane (slides in from right). */
+.brain-editor-pane {
+  position: relative;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.03);
+  animation: brainEditorSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brain-editor-resizer {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 15;
+  background: transparent;
+  transition: background-color 0.2s;
+}
+
+.brain-editor-resizer:hover,
+.brain-editor-resizer:active {
+  background-color: rgba(124, 111, 196, 0.3);
+}
+
+@keyframes brainEditorSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.brain-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.brain-editor-filename-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
+button.brain-editor-rename-toggle {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: rgba(30, 41, 59, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  padding: 0.25rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button.brain-editor-rename-toggle:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #7c6fc4;
+  transform: none;
+}
+
+.brain-editor-rename-form {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  margin-right: 0.5rem;
+}
+
+input.brain-editor-rename-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+  outline: none;
+  background: #ffffff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input.brain-editor-rename-input:focus {
+  border-color: #7c6fc4;
+  box-shadow: 0 0 0 2px rgba(124, 111, 196, 0.12);
+}
+
+button.brain-editor-rename-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button.brain-editor-rename-btn.confirm {
+  color: #10b981;
+}
+
+button.brain-editor-rename-btn.confirm:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+button.brain-editor-rename-btn.cancel {
+  color: #ef4444;
+}
+
+button.brain-editor-rename-btn.cancel:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.brain-editor-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.02);
+  padding: 0.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+button.brain-editor-tab-btn {
+  flex: 1;
+  height: auto;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 6px;
+  padding: 0.4rem 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(30, 41, 59, 0.5);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button.brain-editor-tab-btn:hover {
+  background: rgba(0, 0, 0, 0.02);
+  color: rgba(30, 41, 59, 0.8);
+  transform: none;
+}
+
+button.brain-editor-tab-btn.active {
+  background: #ffffff;
+  color: #7c6fc4;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Formatted markdown preview */
+.brain-editor-preview {
+  overflow-y: auto;
+  user-select: text;
+  text-align: left;
+}
+
+.brain-editor-preview p {
+  margin-bottom: 0.8rem;
+}
+
+.brain-editor-preview h1,
+.brain-editor-preview h2,
+.brain-editor-preview h3,
+.brain-editor-preview h4 {
+  margin-top: 1.2rem;
+  margin-bottom: 0.5rem;
+  color: #1e293b;
+}
+
+.brain-editor-preview ul,
+.brain-editor-preview ol {
+  margin-left: 1.2rem;
+  margin-bottom: 0.8rem;
+}
+
+.brain-editor-preview li {
+  margin-bottom: 0.3rem;
+}
+
+.brain-editor-preview code {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.brain-editor-preview pre {
+  background: rgba(0, 0, 0, 0.03);
+  padding: 0.75rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 0.8rem;
+}
+
+.brain-editor-preview pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.brain-editor-filename {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(30, 41, 59, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.brain-editor-close-btn {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.04);
+  border: none;
+  box-shadow: none;
+  color: rgba(30, 41, 59, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+
+button.brain-editor-close-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #1e293b;
+  transform: none;
+}
+
+button.brain-editor-close-btn:active {
+  transform: scale(0.92);
+}
+
+.brain-editor-content {
+  flex: 1;
+  margin: 0;
+  padding: 1.2rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(30, 41, 59, 0.85);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  box-shadow: none;
+  max-height: none;
+  overflow-y: auto;
+}
+
+textarea.brain-editor-content {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+}
+
+.brain-editor-content:focus {
+  border-color: transparent;
+}
+
+.brain-editor-actions {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+button.brain-editor-delete-btn {
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+button.brain-editor-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #dc2626;
+}
+
+button.brain-editor-delete-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+button.brain-editor-save-btn {
+  width: auto;
+  height: auto;
+  min-width: 90px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #7c6fc4, #3b82f6);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(124, 111, 196, 0.2);
+  transition: opacity 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+button.brain-editor-save-btn:hover:not(:disabled) {
+  box-shadow: 0 6px 16px rgba(124, 111, 196, 0.35);
+  transform: translateY(-1px);
+}
+
+button.brain-editor-save-btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+button.brain-editor-save-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+button.brain-editor-reset-btn {
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+button.brain-editor-reset-btn:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.16);
+  color: #d97706;
+}
+
+button.brain-editor-reset-btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+button.brain-editor-reset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Settings modal: section divider + title for Brain Configuration. */
+.settings-section-divider {
+  width: 100%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.06);
+  margin: 0.5rem 0 1rem;
+}
+
+.settings-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8a8a90;
+  margin-bottom: 0.75rem;
+}
+
+/* Brain toggle button (+ updating spinner) in the top bar. The cluster is the
+   absolutely-positioned anchor; the spinner sits to the left of the button. */
+.brain-toolbar-cluster {
+  position: absolute;
+  right: 4.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Spinning arrow shown to the left of the Brain button while memory updates. */
+.brain-updating-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7c6fc4;
+  animation: brainSpin 0.8s linear infinite;
+}
+
+button.brain-toggle-btn {
+  width: auto;
+  height: 2.1rem;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: rgba(30, 41, 59, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+button.brain-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #1e293b;
+  border-color: rgba(0, 0, 0, 0.15);
+  transform: none;
+}
+
+button.brain-toggle-btn:active {
+  transform: scale(0.96);
+}
+
+button.brain-toggle-btn.active {
+  background: rgba(124, 111, 196, 0.1);
+  color: #7c6fc4;
+  border-color: rgba(124, 111, 196, 0.3);
+}
+
+/* ── View tab bar (Graph · Calendar · Journal · Tasks · People · Assistant) ── */
+.brain-view-tabs {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+button.brain-view-tab {
+  width: auto;
+  height: auto;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(30, 41, 59, 0.6);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+button.brain-view-tab:hover { color: #1e293b; transform: none; }
+button.brain-view-tab.active { background: rgba(124, 111, 196, 0.12); color: #7c6fc4; }
+
+/* ── Generic off-grid view pane ── */
+.brain-view-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 4.5rem 2rem 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+  text-align: left;
+}
+
+.brain-view-title { font-size: 1.4rem; font-weight: 700; color: #1e293b; margin: 0 0 0.25rem; }
+.brain-view-sub { color: rgba(30, 41, 59, 0.6); font-size: 0.9rem; margin: 0 0 1rem; }
+.brain-view-empty {
+  color: rgba(30, 41, 59, 0.5); font-size: 0.95rem; text-align: center;
+  padding: 4rem 1rem;
+}
+
+/* Reference chip (used in calendar/journal/refs panel). */
+button.brain-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: auto;
+  border: 1px solid rgba(124, 111, 196, 0.3);
+  background: rgba(124, 111, 196, 0.08);
+  color: #6d5fb8;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  margin: 0.1rem 0.2rem 0.1rem 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+button.brain-ref-chip:hover { background: rgba(124, 111, 196, 0.18); transform: none; }
+
+/* ── Calendar view (Grid layout) ── */
+.brain-calendar-container {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 1.5rem;
+  height: calc(100vh - 110px);
+  padding: 4.5rem 1.5rem 1.5rem;
+  box-sizing: border-box;
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
+}
+.brain-calendar-main {
+  flex: 1.5;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  padding: 1.2rem;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.brain-calendar-main.centered {
+  flex: 1;
+  max-width: 960px;
+}
+.brain-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.brain-calendar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.brain-calendar-month-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+.brain-calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+button.brain-calendar-nav-btn {
+  width: 2rem !important;
+  height: 2rem !important;
+  border-radius: 50% !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: rgba(30, 41, 59, 0.8) !important;
+  border: none !important;
+  box-shadow: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: background 0.2s !important;
+}
+button.brain-calendar-nav-btn:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+button.brain-calendar-today-btn {
+  width: auto !important;
+  height: 2rem !important;
+  border-radius: 999px !important;
+  background: rgba(124, 111, 196, 0.1) !important;
+  color: #7c6fc4 !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  padding: 0 0.8rem !important;
+  cursor: pointer !important;
+  transition: background 0.2s, color 0.2s !important;
+}
+button.brain-calendar-today-btn:hover {
+  background: rgba(124, 111, 196, 0.18) !important;
+}
+.brain-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 1;
+}
+.brain-calendar-day-header {
+  background: #f8fafc;
+  padding: 0.6rem 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  text-align: center;
+}
+.brain-calendar-day-cell {
+  background: #ffffff;
+  min-height: 80px;
+  min-width: 0;
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  box-sizing: border-box;
+}
+.brain-calendar-day-cell:hover {
+  background-color: #f8fafc;
+}
+.brain-calendar-day-cell.other-month {
+  color: #cbd5e1;
+  background-color: #fafafa;
+}
+.brain-calendar-day-cell.other-month .brain-calendar-day-num {
+  opacity: 0.5;
+}
+.brain-calendar-day-cell.today {
+  background-color: rgba(124, 111, 196, 0.04);
+}
+.brain-calendar-day-cell.today .brain-calendar-day-num {
+  background: #7c6fc4;
+  color: #ffffff;
+  border-radius: 50%;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.brain-calendar-day-cell.selected {
+  background-color: rgba(59, 130, 246, 0.04);
+  outline: 2px solid rgba(59, 130, 246, 0.3);
+  outline-offset: -2px;
+  z-index: 1;
+}
+.brain-calendar-day-num {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.25rem;
+  align-self: flex-start;
+}
+.brain-calendar-cell-events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  overflow: hidden;
+}
+.brain-calendar-cell-event-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.08rem 0.25rem;
+  border-radius: 4px;
+  background: rgba(124, 111, 196, 0.08);
+  color: #6d5fb8;
+  border-left: 2px solid #7c6fc4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brain-calendar-cell-event-more {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #64748b;
+  padding-left: 0.2rem;
+}
+.brain-calendar-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  padding: 1.2rem;
+  overflow-y: auto;
+  position: relative;
+  animation: calendarDetailsSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes calendarDetailsSlideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+button.brain-calendar-details-close {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.2rem;
+  width: 1.75rem !important;
+  height: 1.75rem !important;
+  border-radius: 50% !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: rgba(30, 41, 59, 0.5) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: background 0.2s, color 0.2s !important;
+}
+button.brain-calendar-details-close:hover {
+  background: rgba(0, 0, 0, 0.08) !important;
+  color: #1e293b !important;
+}
+.brain-calendar-details-header {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding-bottom: 0.6rem;
+}
+.brain-calendar-details-date {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+.brain-calendar-details-subtitle {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+.brain-cal-section { margin-bottom: 1.5rem; }
+.brain-cal-section-title {
+  font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #8a8a90; margin: 0 0 0.5rem;
+}
+.brain-cal-row { display: flex; gap: 1rem; padding: 0.6rem 0; border-top: 1px solid rgba(0, 0, 0, 0.05); }
+.brain-cal-date {
+  flex-shrink: 0; width: 6.5rem; font-weight: 700; color: #7c6fc4; font-size: 0.85rem; padding-top: 0.1rem;
+  font-variant-numeric: tabular-nums;
+}
+.brain-cal-body { min-width: 0; flex: 1; }
+.brain-cal-text { color: rgba(30, 41, 59, 0.9); font-size: 0.9rem; line-height: 1.4; }
+.brain-cal-chips { margin-top: 0.25rem; }
+
+/* ── Journal view ── */
+.brain-journal-day { margin-bottom: 1.5rem; }
+.brain-journal-day.today .brain-journal-date { color: #7c6fc4; }
+.brain-journal-date {
+  display: flex; align-items: center; gap: 0.6rem;
+  font-size: 0.95rem; font-weight: 700; color: #1e293b; margin: 0 0 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 0.4rem;
+}
+.brain-journal-badge {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: #8a8a90; background: rgba(0, 0, 0, 0.05); border-radius: 999px; padding: 0.1rem 0.5rem;
+}
+.brain-journal-badge.live { color: #7c6fc4; background: rgba(124, 111, 196, 0.12); }
+.brain-journal-entry { display: flex; gap: 0.6rem; padding: 0.25rem 0; font-size: 0.88rem; }
+.brain-journal-time { flex-shrink: 0; color: rgba(30, 41, 59, 0.4); font-variant-numeric: tabular-nums; font-size: 0.78rem; padding-top: 0.1rem; }
+.brain-journal-text { color: rgba(30, 41, 59, 0.85); line-height: 1.45; }
+.brain-journal-refs { margin-left: 0.3rem; }
+
+/* ── Tasks view ── */
+.brain-task-filters { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1rem; }
+button.brain-task-filter {
+  border: 1px solid rgba(0, 0, 0, 0.1); background: transparent; box-shadow: none;
+  border-radius: 999px; padding: 0.25rem 0.7rem; font-size: 0.78rem; font-weight: 600;
+  font-family: inherit; color: rgba(30, 41, 59, 0.7); cursor: pointer;
+}
+button.brain-task-filter.active { background: rgba(124, 111, 196, 0.12); color: #7c6fc4; border-color: rgba(124, 111, 196, 0.3); }
+.brain-task-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+.brain-task-col-title {
+  font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #8a8a90; margin: 0 0 0.6rem; display: flex; gap: 0.4rem; align-items: center;
+}
+.brain-task-col-title span {
+  background: rgba(0, 0, 0, 0.06); border-radius: 999px; padding: 0 0.4rem; font-size: 0.72rem; color: rgba(30, 41, 59, 0.6);
+}
+button.brain-task-card {
+  display: block; width: 100%; height: auto; text-align: left; box-shadow: none;
+  background: #fff; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 12px;
+  padding: 0.7rem 0.85rem; margin-bottom: 0.6rem; cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+button.brain-task-card:hover { border-color: rgba(124, 111, 196, 0.35); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05); transform: none; }
+button.brain-task-card.done { opacity: 0.6; }
+button.brain-task-card.done .brain-task-name { text-decoration: line-through; }
+.brain-task-name { font-weight: 700; color: #1e293b; font-size: 0.9rem; }
+.brain-task-desc { color: rgba(30, 41, 59, 0.6); font-size: 0.8rem; margin-top: 0.2rem; }
+.brain-task-meta { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.45rem; align-items: center; }
+.brain-task-due { font-size: 0.72rem; font-weight: 700; color: #d97706; background: rgba(245, 158, 11, 0.12); border-radius: 999px; padding: 0.1rem 0.5rem; }
+.brain-task-tag { font-size: 0.72rem; font-weight: 600; color: #6d5fb8; background: rgba(124, 111, 196, 0.1); border-radius: 999px; padding: 0.1rem 0.5rem; }
+
+/* ── People view ── */
+.brain-people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.8rem; }
+button.brain-person-card {
+  display: block; width: auto; height: auto; text-align: left; box-shadow: none;
+  background: #fff; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 12px;
+  padding: 0.8rem 0.9rem; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+button.brain-person-card:hover { border-color: rgba(124, 111, 196, 0.35); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05); transform: none; }
+.brain-person-name { font-weight: 700; color: #1e293b; font-size: 0.95rem; }
+.brain-person-rel { font-size: 0.78rem; font-weight: 600; color: #7c6fc4; margin-top: 0.1rem; }
+.brain-person-desc { font-size: 0.8rem; color: rgba(30, 41, 59, 0.6); margin-top: 0.3rem; line-height: 1.4; }
+.brain-person-bday { font-size: 0.78rem; color: rgba(30, 41, 59, 0.7); margin-top: 0.4rem; }
+
+/* ── Assistant view ── */
+.brain-assistant-pane { display: flex; flex-direction: column; }
+.brain-assistant-head { margin-bottom: 0.5rem; }
+.brain-assistant-content {
+  flex: 1; min-height: 320px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 12px;
+  padding: 1rem; background: #fff; margin-top: 0.5rem; overflow-y: auto;
+}
+.brain-assistant-textarea {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.5;
+  color: #1e293b; resize: vertical; outline: none; width: 100%;
+}
+
+/* ── Referenced-by panel (in the node editor) ── */
+.brain-refs-panel { border-top: 1px solid rgba(0, 0, 0, 0.08); padding: 0.7rem 1rem; max-height: 9rem; overflow-y: auto; }
+.brain-refs-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #8a8a90; margin-bottom: 0.4rem; }
+.brain-ref-line { font-size: 0.8rem; color: rgba(30, 41, 59, 0.8); line-height: 1.4; margin-bottom: 0.3rem; }
+.brain-ref-kind {
+  display: inline-block; font-size: 0.66rem; font-weight: 700; border-radius: 4px; padding: 0.05rem 0.35rem;
+  margin-right: 0.4rem; vertical-align: middle;
+}
+.brain-ref-kind.cal { background: rgba(245, 158, 11, 0.15); color: #d97706; }
+.brain-ref-kind.jrn { background: rgba(59, 130, 246, 0.15); color: #2563eb; }
+.brain-ref-kind.asst { background: rgba(124, 111, 196, 0.15); color: #6d5fb8; }
+
+/* ── Cluster legend ── */
+.brain-legend {
+  position: absolute; bottom: 1rem; right: 1.2rem; z-index: 10;
+  width: 200px; max-height: 50vh; overflow-y: auto;
+  border-radius: 14px; background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 0.6rem 0.7rem;
+}
+.brain-legend-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #8a8a90; margin-bottom: 0.4rem; }
+button.brain-legend-row {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%; height: auto; text-align: left;
+  background: transparent; border: none; box-shadow: none; padding: 0.25rem 0.2rem;
+  border-radius: 6px; cursor: pointer; font-family: inherit;
+}
+button.brain-legend-row:hover { background: rgba(0, 0, 0, 0.03); transform: none; }
+.brain-legend-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.brain-legend-label { font-size: 0.82rem; color: rgba(30, 41, 59, 0.85); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.brain-legend-reset {
+  margin-top: 0.5rem; width: 100%; height: auto; background: transparent; border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444; box-shadow: none; border-radius: 8px; padding: 0.3rem; font-size: 0.75rem; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+button.brain-legend-reset:hover { background: rgba(239, 68, 68, 0.08); transform: none; }
+
+/* ── First-boot name setup: a full-white minimal screen over everything ── */
+.brain-setup-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; align-items: center; justify-content: center;
+  background: #ffffff;
+  animation: brainExplorerFadeIn 0.4s ease-out;
+}
+.brain-setup-inner {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 1.6rem; width: min(560px, 86%); text-align: center;
+}
+.brain-setup-title {
+  font-size: clamp(1.9rem, 4vw, 2.8rem); font-weight: 700; letter-spacing: -0.02em;
+  color: #1e293b; margin: 0;
+}
+.brain-setup-input {
+  width: 100%; box-sizing: border-box;
+  border: none; border-bottom: 2px solid rgba(0, 0, 0, 0.12);
+  border-radius: 0; padding: 0.6rem 0.2rem;
+  font-family: inherit; font-size: clamp(1.2rem, 2.5vw, 1.6rem); font-weight: 500;
+  color: #1e293b; outline: none; text-align: center; background: transparent;
+  transition: border-color 0.2s ease;
+}
+.brain-setup-input::placeholder { color: rgba(30, 41, 59, 0.3); font-weight: 400; }
+.brain-setup-input:focus { border-bottom-color: #7c6fc4; }
+.brain-setup-error { color: #ef4444; font-size: 0.95rem; }
+button.brain-setup-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: auto; min-width: 200px; height: auto;
+  padding: 0.9rem 2.4rem; border-radius: 999px; border: none;
+  background: #1e293b; color: #fff; font-family: inherit;
+  font-size: 1.05rem; font-weight: 600; line-height: 1; white-space: nowrap;
+  cursor: pointer; transition: background 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+}
+button.brain-setup-btn:hover:not(:disabled) { background: #0f172a; transform: translateY(-1px); }
+button.brain-setup-btn:active:not(:disabled) { transform: scale(0.98); }
+button.brain-setup-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Calendar Month/Year Pickers ── */
+.brain-calendar-select-container {
+  display: inline-block;
+  position: relative;
+}
+.brain-calendar-month-label,
+.brain-calendar-year-label {
+  cursor: pointer;
+  border-bottom: 2px dashed rgba(124, 111, 196, 0.4);
+  padding: 0 0.2rem;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+.brain-calendar-month-label:hover,
+.brain-calendar-year-label:hover {
+  color: #7c6fc4;
+  background-color: rgba(124, 111, 196, 0.06);
+  border-bottom-color: #7c6fc4;
+  border-radius: 4px;
+}
+.brain-calendar-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  margin-top: 0.4rem;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  max-height: 240px;
+  overflow-y: auto;
+  min-width: 140px;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.2;
+}
+.brain-calendar-picker-dropdown.years {
+  min-width: 90px;
+}
+.brain-calendar-picker-item {
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #334155;
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+}
+.brain-calendar-picker-item:hover {
+  background: rgba(124, 111, 196, 0.08);
+  color: #7c6fc4;
+}
+.brain-calendar-picker-item.active {
+  background: #7c6fc4;
+  color: #ffffff;
+  font-weight: 700;
+}

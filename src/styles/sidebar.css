@@ -1,0 +1,220 @@
+/* The conversation history sidebar (components/Sidebar.jsx).
+   Overlays the chat column (absolute) so toggling it never reflows the chat.
+   No panel: no background, no blur, no border. The tiles float over the chat
+   and are grounded by a big background-coloured shadow (see .sidebar-item) that
+   softly hides whatever is behind them and fades out before the right edge —
+   so nothing reads as "clipped inside a box". */
+
+.sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 300px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  z-index: 17; /* elevated above the messages-fade (z-index 16), under the appbar (z-index 20) */
+  opacity: 1;
+  /* Expand fades in slowly; collapse fades out quicker (overridden below). */
+  transition: opacity 2.2s cubic-bezier(0.05, 0.95, 0.1, 1);
+}
+
+.sidebar.collapsed {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  /* No horizontal scrollbar. The right padding leaves room for each tile's
+     background-coloured shadow to fade to nothing before this edge, so it
+     dissolves into the chat instead of cutting off on a hard line. */
+  overflow-x: hidden;
+  padding: 0.5rem 4rem 0.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  direction: rtl; /* Put the scrollbar on the left edge */
+  scrollbar-gutter: stable; /* Reserve space so it doesn't push elements when it appears */
+}
+
+.sidebar-empty {
+  color: #9a9aa0;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1.5rem 0.5rem;
+  direction: ltr; /* Reset to left-to-right */
+}
+
+/* Tile entrance: starts big and blurred, nudged ~5px to the left, then settles
+   smaller, sharp, and in place — same slow timing/easing as the chat messages.
+   --index (set inline) staggers them top-to-bottom; on collapse the same
+   keyframe runs in reverse, staggered bottom-to-top, to play the entrance out. */
+@keyframes sidebarItemIn {
+  from {
+    opacity: 0;
+    transform: translateX(-5px) scale(1.1);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* The entrance played backwards — used on collapse. A distinct name (not the
+   `reverse` direction) so toggling the class reliably re-triggers it. */
+@keyframes sidebarItemOut {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-5px) scale(1.1);
+    filter: blur(5px);
+  }
+}
+
+/* Outer tile: a transparent, non-animated positioned container. It is
+   deliberately NOT a stacking context (no transform/opacity/z-index), so its
+   ::before glow paints in the sidebar's stacking context at z-index -1 — below
+   every tile's inner pill and text. The entrance/exit animation lives on the
+   inner pill and the glow, never on this element, so even mid-animation a tile's
+   glow can't rise above a neighbouring tile's label. */
+.sidebar-item {
+  position: relative;
+  display: flex;
+  border-radius: 999px;
+  cursor: pointer;
+  direction: ltr; /* Reset to left-to-right */
+}
+
+/* The white pill: the visible tile, and where the entrance animation runs.
+   --flip-dy carries the FLIP reflow shift (set in Sidebar.jsx) on the inner
+   pill + glow rather than the outer tile, so the outer never becomes a stacking
+   context. translate is independent of the animation's transform. */
+.sidebar-item-inner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 999px;
+  background: #ffffff;
+  transform-origin: center;
+  translate: 0 var(--flip-dy, 0px);
+  transition: background-color 0.15s ease;
+  animation: sidebarItemIn 2.2s cubic-bezier(0.05, 0.95, 0.1, 1) backwards;
+  animation-delay: calc(var(--index, 0) * 0.08s);
+}
+
+/* The big background-coloured glow that grounds each tile and softly masks the
+   chat behind it. z-index -1 keeps it below every tile's pill/text (see above);
+   it animates in sync with the inner pill. */
+.sidebar-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+  box-shadow: 0 0 25px 12px #f8f9fa, 0 0 50px 26px #f8f9fa;
+  transform-origin: center;
+  translate: 0 var(--flip-dy, 0px);
+  animation: sidebarItemIn 2.2s cubic-bezier(0.05, 0.95, 0.1, 1) backwards;
+  animation-delay: calc(var(--index, 0) * 0.08s);
+}
+
+/* FLIP slide: transition the inner pill + glow back to their new position.
+   Enabled only while a reflow is playing so the invert step can jump instantly. */
+.sidebar-item.flip-playing .sidebar-item-inner,
+.sidebar-item.flip-playing .sidebar-item::before {
+  transition: translate 2.2s cubic-bezier(0.05, 0.95, 0.1, 1),
+              background-color 0.15s ease;
+}
+
+/* Collapse plays the entrance out, but faster and with a tighter stagger. */
+.sidebar.collapsed .sidebar-item-inner,
+.sidebar.collapsed .sidebar-item::before {
+  animation-name: sidebarItemOut;
+  animation-duration: 0.55s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-fill-mode: forwards;
+  animation-delay: calc((var(--count, 1) - 1 - var(--index, 0)) * 0.04s);
+}
+
+.sidebar-item:hover .sidebar-item-inner {
+  background: #f0f1f4;
+}
+
+.sidebar-item.active .sidebar-item-inner {
+  background: #e9f2ff;
+}
+
+.sidebar-item-title {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #2c2c2e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-item.active .sidebar-item-title {
+  color: #007aff;
+  font-weight: 600;
+}
+
+.sidebar-item-actions {
+  display: flex; /* always laid out (reserves height) so hover doesn't reflow */
+  gap: 0.1rem;
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-item:hover .sidebar-item-actions,
+.sidebar-item.active .sidebar-item-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+button.sidebar-item-btn {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #888;
+  box-shadow: none;
+}
+
+button.sidebar-item-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #1a1a1a;
+}
+
+button.sidebar-item-btn:disabled {
+  opacity: 0.3;
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.sidebar-rename-input {
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid rgba(0, 122, 255, 0.45);
+  border-radius: 999px;
+  outline: none;
+  background: #fff;
+  min-width: 0;
+}

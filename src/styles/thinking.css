@@ -1,0 +1,72 @@
+/* The reasoning ("thinking") block (components/ThinkingBlock.jsx) — a
+   collapsible panel above a reasoning model's final answer, visually muted
+   and secondary to it. The thinking on/off switch in the composer is styled
+   in controls.css (it's a shared control). */
+
+.thinking-block {
+  margin-bottom: 0.6rem;
+}
+
+.thinking-block:last-child {
+  margin-bottom: 0;
+}
+
+button.thinking-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0.1rem 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #8a8a90;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.thinking-toggle-row:hover {
+  background: transparent;
+  color: #5a5a60;
+  transform: none;
+}
+
+button.thinking-toggle-row:active {
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+}
+
+.thinking-chevron {
+  flex-shrink: 0;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.thinking-block.open .thinking-chevron {
+  transform: rotate(90deg);
+}
+
+.thinking-content {
+  margin-top: 0.35rem;
+  color: #6e6e76;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.thinking-content p:first-child { margin-top: 0; }
+.thinking-content p:last-child { margin-bottom: 0; }
+
+/* Pulse the label while the model is still mid-reasoning. */
+.thinking-block.thinking-live .thinking-label {
+  animation: thinkingPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes thinkingPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}

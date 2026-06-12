@@ -1,3 +1,10 @@
+"""Standalone sanity check for the mlx_vlm generation loop.
+
+Runs generate_step against a tiny dummy model (no real weights needed), so it
+verifies the installed mlx/mlx_vlm versions are compatible without loading a
+multi-gigabyte checkpoint. Run with: .venv/bin/python scripts/smoke_test_generation.py
+"""
+
 import mlx.core as mx
 import mlx.nn as nn
 from mlx_vlm.generate.ar import generate_step

@@ -1,0 +1,29 @@
+/* The page skeleton: a full-height column (top bar above, body below), with
+   the body holding the sidebar overlay and the chat column. */
+
+.app-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Row beneath the full-width appbar: sidebar + chat column. position:relative so
+   the sidebar can overlay the chat (absolute) instead of pushing it aside. */
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.app-container {
+  flex: 1;
+  min-width: 0; /* allow the chat column to shrink so #messages can overflow */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #f8f9fa;
+  position: relative;
+}
