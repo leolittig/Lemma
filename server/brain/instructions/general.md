@@ -22,8 +22,8 @@ The graph is **typed** and grows from a single **root node** (the user). A few n
 ## 2. Off-grid references = `@Name` (NOT `[[ ]]`)
 
 The off-grid entities (Calendar, Journal, Assistant) point at nodes using an **@mention**, which is a reference, not a graph edge:
-- A Calendar entry about Bruno's birthday writes `@Bruno`.
-- A Journal line about updating the University area writes `@University`.
+- A Calendar entry about Bob's birthday writes `@Bob`.
+- A Journal line about updating the College area writes `@College`.
 - An Assistant rule about a topic writes `@Topic`.
 
 Rule of thumb: **`[[ ]]` connects two graph nodes; `@` lets an off-grid entity reference a node.** A node never links to an off-grid entity.
@@ -39,6 +39,7 @@ Every node file:
 created: YYYY-MM-DD HH:MM
 updated: YYYY-MM-DD HH:MM
 type: person | activity | task | group | <other>
+icon: <lucide-icon-name> (optional, e.g., heart, graduation-cap, briefcase)
 ---
 
 # Node Name
@@ -55,9 +56,29 @@ One-line description of what this node is.
 
 Rules:
 - **Always include `type`.** Omitting it defaults to a generic leaf and breaks organization.
+- **Set a customized `icon`** whenever creating or updating a node to represent it specifically:
+  - `heart` - romantic partner (e.g., boyfriend, girlfriend, spouse)
+  - `user` - individual friends or people
+  - `users` - group of people (e.g. family, book club, friends)
+  - `briefcase` - work, jobs, career, internships
+  - `graduation-cap` - university, college, degrees, studies, courses
+  - `music` - band, musical instruments, songs, music projects
+  - `dollar-sign` - finance, budget, sales
+  - `shopping-bag` - business, commerce, client projects, 3D printing sales
+  - `dog` - pets, animals
+  - `target` - personal goals, objectives
+  - `gamepad-2` - gaming, entertainment, play
+  - `plane` - travel, vacations, flights
+  - `home` - family home, household
+  - `book-open` - books, reading, studies, learning
+  - `code` - coding, programming, software development projects
+  - `dumbbell` - workout, fitness, gym, sports
+  - `map-pin` - locations, cities, venues
+  - `award` - achievements, awards, milestones
+  - **And any other valid Lucide icon name** (kebab-case, e.g., `heart-handshake`, `brain`, `calendar`, `sparkles`, `coffee`, `camera`).
 - **Bracketed timestamps** `[YYYY-MM-DD HH:MM]` start every log line.
 - **Verbal dates in text**: write dates as English month names ("June 18th"), **never** numeric ISO ("2026-06-18") inside the text of an entry.
-- **Short filenames**, no spaces (e.g. `Bruno.md`, `University.md`, `3DPrinting.md`).
+- **Short filenames**, no spaces (e.g. `Eve.md`, `College.md`, `Work.md`).
 - **No broken links**: a `[[Name]]` must match an existing node's filename stem.
 
 ---
@@ -85,7 +106,7 @@ Guidelines:
 
 ## 5. Worked example
 
-User says: "My closest friend is Davi, from church. His brothers Felipe and Gabriel are twins, also from church. My birthday is July 25th. I have a day job in IT and also do 3D printing on the side."
+User says: "My closest friend is Alice, from the book club. Her brothers Bob and Charlie are twins, also from the club. My birthday is October 12th. I have a day job in accounting and also do gardening on the side."
 
 ```text
 === CREATE Friends.md ===
@@ -102,52 +123,52 @@ The user's friends.
 ## Connections & Links
 - [[User]]
 
-=== CREATE Davi.md ===
+=== CREATE Alice.md ===
 ---
 created: 2026-06-11 14:00
 updated: 2026-06-11 14:00
 type: person
-relationship: Closest friend (church)
+relationship: Closest friend (book club)
 ---
 
-# Davi
+# Alice
 
-The user's closest friend, from church.
+The user's closest friend, from the book club.
 
 ## Connections & Links
 - [[Friends]]
 
-=== CREATE Felipe.md ===
+=== CREATE Bob.md ===
 ---
 created: 2026-06-11 14:00
 updated: 2026-06-11 14:00
 type: person
-relationship: Church friend
+relationship: Book club friend
 ---
 
-# Felipe
+# Bob
 
-Twin brother of Gabriel, from church.
+Twin brother of Charlie, from the book club.
 
 ## Connections & Links
 - [[Friends]]
-- [[Gabriel]]
+- [[Charlie]]
 
-=== CREATE Gabriel.md ===
+=== CREATE Charlie.md ===
 ---
 created: 2026-06-11 14:00
 updated: 2026-06-11 14:00
 type: person
-relationship: Church friend
+relationship: Book club friend
 ---
 
-# Gabriel
+# Charlie
 
-Twin brother of Felipe, from church.
+Twin brother of Bob, from the book club.
 
 ## Connections & Links
 - [[Friends]]
-- [[Felipe]]
+- [[Bob]]
 
 === CREATE Work.md ===
 ---
@@ -158,27 +179,27 @@ type: activity
 
 # Work
 
-The user's day job in IT.
+The user's day job in accounting.
 
 ## Connections & Links
 - [[User]]
 
-=== CREATE 3DPrinting.md ===
+=== CREATE Gardening.md ===
 ---
 created: 2026-06-11 14:00
 updated: 2026-06-11 14:00
 type: activity
 ---
 
-# 3DPrinting
+# Gardening
 
-The user's 3D-printing side business.
+The user's gardening side hobby.
 
 ## Connections & Links
 - [[User]]
 
 === CALENDAR ===
-**Birthday**: User's birthday — July 25th. @User
+**Birthday**: User's birthday — October 12th. @User
 ```
 
-Note: the friends are under `[[Friends]]` (not wired to the root individually), the twins peer-link each other, the job and the side business are **separate** activities, and the birthday went to the Calendar with an @mention — not a `[[Calendar]]` edge.
+Note: the friends are under `[[Friends]]` (not wired to the root individually), the twins peer-link each other, the job and the side hobby are **separate** activities, and the birthday went to the Calendar with an @mention — not a `[[Calendar]]` edge.

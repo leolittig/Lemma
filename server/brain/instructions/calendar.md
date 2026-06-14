@@ -4,7 +4,7 @@ Whenever a date is mentioned — a birthday, a deadline, an event that happened,
 
 ```text
 === CALENDAR ===
-**Birthday**: Bruno — July 25th. @Bruno
+**Birthday**: Bob — July 25th. @Bob
 ```
 
 Rules:
@@ -18,8 +18,24 @@ Rules:
     - User says: "I am Christian" ->
       `=== CALENDAR ===`
       `**Holiday**: Christmas — December 25th. @User`
-    - User says: "My wife is Bruna. Our anniversary is May 13th." ->
+    - User says: "My wife is Eve. Our anniversary is May 13th." ->
       `=== CALENDAR ===`
-      `**Anniversary**: Married Bruna — May 13th. @Bruna`
+      `**Anniversary**: Married Eve — May 13th. @Eve`
       `=== CALENDAR ===`
-      `**Holiday**: Valentine's Day — February 14th. @Bruna`
+      `**Holiday**: Valentine's Day — February 14th. @Eve`
+
+- **Relative Date Calculations**:
+  - Always calculate dates relative to the `Current date/time` provided in the prompt.
+  - Notice the day of the week in the current date/time (e.g., if today is "Friday, 2026-06-12 18:30").
+  - "Next week" refers to the week immediately following the current week. If today is Friday, June 12th, the current week runs through Sunday, June 14th, and "next week" begins on Monday, June 15th. Therefore:
+    - "Next week Tuesday" is Tuesday, June 16th.
+    - "Next week Wednesday" is Wednesday, June 17th.
+    - Do NOT jump an extra week into the future (e.g., do NOT resolve "next week Tuesday" to June 23rd when today is Friday, June 12th).
+  - If a user mentions days of the week for "next week", resolve them to the specific calendar dates of that upcoming week.
+  - If the user says "next [weekday]" (e.g., "next Tuesday" or "next Wednesday"), it refers to the weekday in the week immediately following the current day.
+
+- **Consolidation and Resolution of Calendar Entries**:
+  - If a calendar event that was previously recorded (such as an "Undated" relationship anniversary or event) is now specified with a precise date, or if a date is updated/corrected, you **MUST** resolve it.
+  - Do not keep duplicate, outdated, or "Undated" versions of the same resolved event in `Calendar.md`.
+  - Since the `=== CALENDAR ===` command only appends new lines, you must clean up obsolete entries by using the `=== UPDATE Calendar ===` command to rewrite the entire `Calendar.md` file, removing the outdated/undated lines and keeping only the resolved, correct entries.
+
