@@ -165,36 +165,15 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel, 
             </div>
           </div>
         )}
-        {brainEnabled && (
-          <div className="settings-field">
-            <div className="settings-toggle-row">
-              <label className="settings-label" style={{ color: '#ef4444' }}>Clear and reset brain</label>
-              <button
-                className="settings-action-btn danger"
-                onClick={handleResetBrain}
-                style={{
-                  padding: '0.4rem 0.9rem',
-                  fontSize: '0.8rem',
-                  fontWeight: '600',
-                  color: '#ef4444',
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: 'none',
-                  borderRadius: '999px',
-                  cursor: 'pointer',
-                  transition: 'background 0.2s',
-                }}
-                onMouseOver={(e) => e.target.style.background = 'rgba(239, 68, 68, 0.16)'}
-                onMouseOut={(e) => e.target.style.background = 'rgba(239, 68, 68, 0.08)'}
-              >
-                Reset Brain
-              </button>
-            </div>
-          </div>
-        )}
-        <div className="settings-actions">
+        <div className="settings-footer-actions">
           <button className="settings-action-btn secondary" onClick={onReloadModel}>
             Save and reload
           </button>
+          {brainEnabled && (
+            <button className="settings-action-btn danger-text" onClick={handleResetBrain}>
+              Reset Brain
+            </button>
+          )}
         </div>
       </div>
     </Modal>
