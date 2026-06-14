@@ -13,6 +13,7 @@ import BrainJournal from './BrainJournal';
 import BrainTasks from './BrainTasks';
 import BrainPeople from './BrainPeople';
 import BrainAssistant from './BrainAssistant';
+import * as Lucide from 'lucide-react';
 
 // Physics constants.
 const REPULSION = 1200;
@@ -39,10 +40,80 @@ function hashStr(s) {
   return Math.abs(h);
 }
 
+function parseFrontmatter(content) {
+  if (!content) return { frontmatter: {}, body: '' };
+  const match = content.match(/^\s*---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) {
+    return { frontmatter: {}, body: content };
+  }
+  const yamlText = match[1];
+  const bodyText = match[2];
+  const frontmatter = {};
+  const lines = yamlText.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex !== -1) {
+      const key = trimmed.substring(0, colonIndex).trim();
+      const val = trimmed.substring(colonIndex + 1).trim();
+      frontmatter[key] = val;
+    }
+  }
+  return { frontmatter, body: bodyText };
+}
+
+function replaceMentionsWithTags(text) {
+  if (!text) return '';
+  return text.replace(/(?<![A-Za-z0-9_])@([A-Za-z0-9_]+)/g, (match, name) => {
+    return `<button class="brain-ref-chip" data-node="${name}">${name}</button>`;
+  });
+}
+
+function replaceWikiLinksWithTags(text) {
+  if (!text) return '';
+  return text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, node, label) => {
+    const targetNode = node.trim();
+    const displayLabel = label ? label.trim() : targetNode;
+    return `<button class="brain-ref-chip" data-node="${targetNode}">${displayLabel}</button>`;
+  });
+}
+
+function getArcPath(l, bend = 0.22) {
+  const x1 = l.source.x;
+  const y1 = l.source.y;
+  const x2 = l.target.x;
+  const y2 = l.target.y;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 10) return `M ${x1} ${y1} L ${x2} ${y2}`;
+
+  const targetRadius = l.target.radius || 15;
+  const x2_adj = x2 - (dx / dist) * (targetRadius + 6);
+  const y2_adj = y2 - (dy / dist) * (targetRadius + 6);
+
+  const mx = (x1 + x2_adj) / 2;
+  const my = (y1 + y2_adj) / 2;
+
+  const px = -dy / dist;
+  const py = dx / dist;
+
+  const dot = mx * px + my * py;
+  const dir = dot >= 0 ? 1 : -1;
+
+  const h = dist * bend * dir;
+  const cx = mx + px * h;
+  const cy = my + py * h;
+
+  return `M ${x1} ${y1} Q ${cx} ${cy} ${x2_adj} ${y2_adj}`;
+}
+
 // Build the laid-out graph: BFS depth from the root drives the radial layout;
 // the depth-1 branch a node descends from is its cluster (→ hue); the node's
 // type drives its icon.
-function initSimulation(graphData) {
+function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 200) {
   const rawNodes = graphData.nodes || [];
   const rawLinks = graphData.links || [];
   const ids = new Set(rawNodes.map((n) => n.id));
@@ -50,189 +121,290 @@ function initSimulation(graphData) {
   const adj = {};
   rawNodes.forEach((n) => { adj[n.id] = []; });
   rawLinks.forEach((l) => {
-    if (adj[l.source] && adj[l.target]) { adj[l.source].push(l.target); adj[l.target].push(l.source); }
+    if (adj[l.source] && adj[l.target]) {
+      adj[l.source].push(l.target);
+      adj[l.target].push(l.source);
+    }
   });
-  const degree = {};
-  rawNodes.forEach((n) => { degree[n.id] = adj[n.id].length; });
 
-  // BFS depth + parent from the root.
+  // 1. Build strict tree using BFS from the User root
+  const depth = {};
+  const parent = {};
+  const treeChildren = {};
+  rawNodes.forEach((n) => { treeChildren[n.id] = []; });
+
   const hasRoot = ids.has(ROOT_ID);
-  const depth = {}, parent = {};
   if (hasRoot) {
     depth[ROOT_ID] = 0;
     const q = [ROOT_ID];
     while (q.length) {
       const u = q.shift();
-      for (const v of adj[u]) if (depth[v] === undefined) { depth[v] = depth[u] + 1; parent[v] = u; q.push(v); }
+      for (const v of adj[u]) {
+        if (depth[v] === undefined) {
+          depth[v] = depth[u] + 1;
+          parent[v] = u;
+          treeChildren[u].push(v);
+          q.push(v);
+        }
+      }
     }
   }
-  rawNodes.forEach((n) => { if (depth[n.id] === undefined) { depth[n.id] = hasRoot ? 2 : 1; parent[n.id] = null; } });
 
-  // Cluster = the depth-1 ancestor (top-level branch), or null (root/orphan).
-  const cluster = {};
+  // Handle orphans by attaching them to the root
   rawNodes.forEach((n) => {
-    if (n.id === ROOT_ID) { cluster[n.id] = null; return; }
-    let cur = n.id;
-    while (parent[cur] != null && depth[parent[cur]] > 0) cur = parent[cur];
-    cluster[n.id] = depth[cur] === 1 ? cur : null;
+    if (depth[n.id] === undefined) {
+      depth[n.id] = 1;
+      parent[n.id] = ROOT_ID;
+      treeChildren[ROOT_ID].push(n.id);
+    }
   });
 
-  const branches = rawNodes.filter((n) => depth[n.id] === 1).map((n) => n.id).sort();
-  const hueByBranch = {};
-  branches.forEach((b, i) => { hueByBranch[b] = Math.round((360 * i) / Math.max(1, branches.length)); });
+  // 2. Compute subtree sizes for proportional angular allocation
+  const subtreeSize = {};
+  function calcSubtreeSize(nodeId) {
+    let size = 1;
+    const children = treeChildren[nodeId] || [];
+    children.forEach((childId) => {
+      size += calcSubtreeSize(childId);
+    });
+    subtreeSize[nodeId] = size;
+    return size;
+  }
+  if (hasRoot) {
+    calcSubtreeSize(ROOT_ID);
+  }
+
+  // 3. Recursively calculate parent-child non-overlapping fanned sectors
+  const pos = {};
+  if (hasRoot) {
+    pos[ROOT_ID] = { x: 0, y: 0, angle: -Math.PI / 2 };
+  }
+
+  function layoutSubtree(nodeId, centerAngle, angularSpan, depthVal) {
+    const children = treeChildren[nodeId] || [];
+    if (children.length === 0) return;
+
+    // 1. Group children to place connected siblings (twins) next to each other
+    const childSet = new Set(children);
+    const siblingLinks = rawLinks.filter(l => childSet.has(l.source) && childSet.has(l.target));
+    
+    const sibAdj = {};
+    children.forEach(c => { sibAdj[c] = []; });
+    siblingLinks.forEach(l => {
+      sibAdj[l.source].push(l.target);
+      sibAdj[l.target].push(l.source);
+    });
+
+    const sortedChildren = [];
+    const remaining = new Set(children);
+    while (remaining.size > 0) {
+      const first = Array.from(remaining)[0];
+      remaining.delete(first);
+      sortedChildren.push(first);
+      
+      const twins = sibAdj[first].filter(twin => remaining.has(twin));
+      if (twins.length > 0) {
+        const twin = twins[0];
+        remaining.delete(twin);
+        sortedChildren.push(twin);
+      }
+    }
+
+    // 2. Pre-calculate and layout children with their default angular shares (side-by-side)
+    const totalSize = sortedChildren.reduce((sum, childId) => sum + subtreeSize[childId], 0);
+    let currentAngle = centerAngle - angularSpan / 2;
+
+    sortedChildren.forEach((childId, idx) => {
+      const share = (subtreeSize[childId] / totalSize) * angularSpan;
+      const childAngle = currentAngle + share / 2;
+      const parentPos = pos[nodeId];
+      const baseLen = depthVal === 1 ? edgeLength : 110;
+      const len = baseLen + (depthVal > 1 && sortedChildren.length > 3 ? (idx % 2) * 20 : 0);
+
+      pos[childId] = {
+        x: parentPos.x + Math.cos(childAngle) * len,
+        y: parentPos.y + Math.sin(childAngle) * len,
+        angle: childAngle
+      };
+
+      const nextSpan = depthVal === 1 ? Math.PI * 0.8 : Math.PI * 0.5;
+      layoutSubtree(childId, childAngle, nextSpan, depthVal + 1);
+
+      currentAngle += share;
+    });
+  }
+
+  if (hasRoot) {
+    // Distribute root children over the full circle fanning outwards
+    layoutSubtree(ROOT_ID, -Math.PI / 2, Math.PI * 2, 1);
+  }
+
+  // Fallback positioning for safety
+  rawNodes.forEach((n, idx) => {
+    if (!pos[n.id]) {
+      const a = (idx / rawNodes.length) * Math.PI * 2;
+      pos[n.id] = { x: Math.cos(a) * edgeLength, y: Math.sin(a) * edgeLength, angle: a };
+    }
+  });
+
+  const degree = {};
+  rawNodes.forEach((n) => { degree[n.id] = adj[n.id].length; });
 
   const colorOf = (id) => {
-    if (id === ROOT_ID) return '#475569';            // neutral dark root
-    const c = cluster[id];
-    if (c == null) return '#94a3b8';                  // orphan neutral
-    const hue = hueByBranch[c];
-    if (depth[id] === 1) return `hsl(${hue} 62% 48%)`; // branch anchor
+    if (id === ROOT_ID) return '#475569';
+    let cur = id;
+    while (parent[cur] && parent[cur] !== ROOT_ID) {
+      cur = parent[cur];
+    }
+    const branches = treeChildren[ROOT_ID] || [];
+    const bIdx = branches.indexOf(cur);
+    const hue = bIdx >= 0 ? Math.round((360 * bIdx) / Math.max(1, branches.length)) : 180;
+    if (depth[id] === 1) return `hsl(${hue} 62% 48%)`;
     const jit = (hashStr(id) % 17) - 8;
-    return `hsl(${(hue + jit + 360) % 360} 55% 64%)`;  // tint of the branch hue
+    return `hsl(${(hue + jit + 360) % 360} 55% 64%)`;
   };
-
-  // Radial placement: root center, branches on a ring, descendants in their
-  // branch's angular sector further out. The physics tick then relaxes it.
-  const pos = { [ROOT_ID]: { x: 0, y: 0 } };
-  const N = branches.length;
-  const branchAngle = {};
-  branches.forEach((b, i) => {
-    const a = N === 1 ? -Math.PI / 2 : (i / N) * Math.PI * 2 - Math.PI / 2;
-    branchAngle[b] = a;
-    pos[b] = { x: Math.cos(a) * 220, y: Math.sin(a) * 220 };
-  });
-  const members = {};
-  branches.forEach((b) => { members[b] = []; });
-  const orphans = [];
-  rawNodes.forEach((n) => {
-    if (n.id === ROOT_ID || depth[n.id] === 1) return;
-    const c = cluster[n.id];
-    if (c != null && members[c]) members[c].push(n.id); else orphans.push(n.id);
-  });
-  Object.keys(members).forEach((c) => {
-    const list = members[c].sort();
-    const K = list.length;
-    const base = branchAngle[c];
-    const sector = Math.min(1.4, 0.35 * Math.max(1, K));
-    list.forEach((id, idx) => {
-      const a = K === 1 ? base : base - sector / 2 + (idx / (K - 1)) * sector;
-      const r = 220 + (depth[id] - 1) * 170 + (idx % 2) * 40;
-      pos[id] = { x: Math.cos(a) * r, y: Math.sin(a) * r };
-    });
-  });
-  orphans.forEach((id, idx) => {
-    const a = (idx / Math.max(1, orphans.length)) * Math.PI * 2;
-    pos[id] = { x: Math.cos(a) * 460, y: Math.sin(a) * 460 };
-  });
-  rawNodes.forEach((n, idx) => {
-    if (!pos[n.id]) { const a = (idx / rawNodes.length) * Math.PI * 2; pos[n.id] = { x: Math.cos(a) * 250, y: Math.sin(a) * 250 }; }
-  });
 
   const nodes = rawNodes.map((n) => {
     const isRoot = n.id === ROOT_ID;
     const deg = degree[n.id] || 0;
-    const radius = isRoot ? 26
+    const radius = (isRoot ? 26
       : depth[n.id] === 1 ? 16 + Math.min(deg, 8) * 1.5
-        : 9 + Math.min(deg, 6) * 1.2;
+        : 9 + Math.min(deg, 6) * 1.2) * nodeSizeMult;
     return {
       id: n.id,
       label: n.label || n.id,
-      x: pos[n.id].x, y: pos[n.id].y, vx: 0, vy: 0,
+      x: pos[n.id].x,
+      y: pos[n.id].y,
+      targetX: pos[n.id].x,
+      targetY: pos[n.id].y,
+      vx: 0, vy: 0,
       radius,
       color: colorOf(n.id),
-      depth: depth[n.id],
-      cluster: cluster[n.id],
+      depth: depth[n.id] || 1,
+      cluster: parent[n.id] || null,
       type: n.type || 'leaf',
+      icon: n.icon || '',
       isRoot, pinned: isRoot,
       degree: deg,
       event_count: n.event_count || 0,
       status: n.status || '', tags: n.tags || [], relationship: n.relationship || '',
       updated: n.updated || '', created: n.created || '',
+      targetAngle: pos[n.id].angle,
     };
   });
 
   const byId = {};
   nodes.forEach((n) => { byId[n.id] = n; });
-  const links = rawLinks
-    .filter((l) => byId[l.source] && byId[l.target])
-    .map((l) => ({ source: byId[l.source], target: byId[l.target] }));
 
-  const legend = branches.map((b) => ({ id: b, label: byId[b]?.label || b, hue: hueByBranch[b] }));
-  return { nodes, links, legend };
+  const links = [];
+  const crossLinks = [];
+  const seenLinks = new Set();
+  const seenCrossLinks = new Set();
+
+  rawLinks.forEach((l) => {
+    if (byId[l.source] && byId[l.target]) {
+      const u = l.source;
+      const v = l.target;
+      const pairKey = u < v ? `${u}-${v}` : `${v}-${u}`;
+      const isTreeLink = (parent[u] === v) || (parent[v] === u);
+      if (isTreeLink) {
+        if (!seenLinks.has(pairKey)) {
+          seenLinks.add(pairKey);
+          const parentNode = parent[u] === v ? byId[v] : byId[u];
+          const childNode = parent[u] === v ? byId[u] : byId[v];
+          links.push({ source: parentNode, target: childNode });
+        }
+      } else {
+        if (!seenCrossLinks.has(pairKey)) {
+          seenCrossLinks.add(pairKey);
+          crossLinks.push({ source: byId[u], target: byId[v] });
+        }
+      }
+    }
+  });
+
+  const branches = treeChildren[ROOT_ID] || [];
+  const legend = branches.map((b, i) => {
+    const hue = Math.round((360 * i) / Math.max(1, branches.length));
+    return { id: b, label: byId[b]?.label || b, hue };
+  });
+
+  return { nodes, links, crossLinks, legend };
 }
 
 function tick(nodes, links, draggedNode) {
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i], b = nodes[j];
-      let dx = b.x - a.x, dy = b.y - a.y;
-      let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = REPULSION / (dist * dist);
-      const fx = (dx / dist) * force, fy = (dy / dist) * force;
-      a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
-    }
-  }
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i], b = nodes[j];
-      let dx = b.x - a.x, dy = b.y - a.y;
-      let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const minDist = a.radius + b.radius + 120;
-      if (dist < minDist) {
-        const overlap = minDist - dist;
-        const px = (dx / dist) * overlap * 0.5, py = (dy / dist) * overlap * 0.5;
-        if (!a.pinned && a !== draggedNode) { a.x -= px; a.y -= py; a.vx *= 0.75; a.vy *= 0.75; }
-        if (!b.pinned && b !== draggedNode) { b.x += px; b.y += py; b.vx *= 0.75; b.vy *= 0.75; }
-      }
-    }
-  }
-  links.forEach(({ source, target }) => {
-    let dx = target.x - source.x, dy = target.y - source.y;
-    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    const force = (dist - REST_LENGTH) * ATTRACTION;
-    const fx = (dx / dist) * force, fy = (dy / dist) * force;
-    source.vx += fx; source.vy += fy; target.vx -= fx; target.vy -= fy;
-  });
-  nodes.forEach((n) => { n.vx -= n.x * CENTER_GRAVITY; n.vy -= n.y * CENTER_GRAVITY; });
+  // Linearly interpolate non-dragged nodes back to their clean, non-crossing tree layouts
   nodes.forEach((n) => {
     if (n.pinned || n === draggedNode) {
       n.vx = 0; n.vy = 0;
       if (n.isRoot) { n.x = 0; n.y = 0; }
       return;
     }
-    n.vx *= DAMPING; n.vy *= DAMPING; n.x += n.vx; n.y += n.vy;
+    const targetX = n.targetX !== undefined ? n.targetX : 0;
+    const targetY = n.targetY !== undefined ? n.targetY : 0;
+    
+    // Smooth transition
+    n.x += (targetX - n.x) * 0.15;
+    n.y += (targetY - n.y) * 0.15;
+    n.vx = 0;
+    n.vy = 0;
   });
 }
 
 function settle(s) {
-  for (let i = 0; i < 300; i++) tick(s.nodes, s.links);
+  // Static layout doesn't need physics settling
   return s;
 }
 
-// A small white line-icon per node type, centred at the node origin.
-function TypeGlyph({ type, size }) {
-  const props = { fill: 'none', stroke: '#ffffff', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', opacity: 0.95 };
-  let paths;
-  switch (type) {
-    case 'user':
-    case 'person':
-      paths = (<><circle cx="12" cy="8" r="4" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>); break;
-    case 'activity':
-      paths = (<><rect x="3" y="8" width="18" height="12" rx="2" /><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></>); break;
-    case 'task':
-      paths = (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 12l2.5 2.5L16 9" /></>); break;
-    case 'group':
-      paths = (<><circle cx="9" cy="9" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M16 6.5a3 3 0 0 1 0 6" /></>); break;
-    case 'place':
-      paths = (<><path d="M12 21s6-5.5 6-10a6 6 0 1 0-12 0c0 4.5 6 10 6 10z" /><circle cx="12" cy="11" r="2" /></>); break;
-    case 'pet':
-      paths = (<><circle cx="12" cy="14" r="4" /><circle cx="6" cy="9" r="1.5" /><circle cx="18" cy="9" r="1.5" /></>); break;
-    case 'goal':
-      paths = (<><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /></>); break;
-    default:
-      paths = (<circle cx="12" cy="12" r="5" />);
+// Render a customized Lucide icon inside the node, falling back to a clean default based on type.
+function NodeIcon({ name, type, size }) {
+  // Resolve key name to PascalCase
+  const cleanName = (name || '').trim();
+  let pascalName = '';
+  
+  if (type === 'user') {
+    pascalName = 'Crown';
+  } else if (cleanName) {
+    pascalName = cleanName
+      .split(/[-_ ]+/)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join('');
   }
-  return (<g transform={`translate(${-size / 2},${-size / 2}) scale(${size / 24})`} {...props}>{paths}</g>);
+
+  // Fallback to type if no icon specified
+  if (!pascalName) {
+    switch (type) {
+      case 'user':
+        pascalName = 'Crown'; break;
+      case 'person':
+        pascalName = 'User2'; break;
+      case 'activity':
+        pascalName = 'Activity'; break;
+      case 'task':
+        pascalName = 'CheckSquare'; break;
+      case 'group':
+        pascalName = 'Folder'; break;
+      case 'place':
+        pascalName = 'MapPin'; break;
+      case 'pet':
+        pascalName = 'Dog'; break;
+      case 'goal':
+        pascalName = 'Target'; break;
+      default:
+        pascalName = 'HelpCircle';
+    }
+  }
+
+  let IconComponent = Lucide[pascalName] || Lucide[pascalName + 'Icon'] || Lucide.HelpCircle;
+  if (!IconComponent || typeof IconComponent !== 'function' && typeof IconComponent !== 'object') {
+    IconComponent = Lucide.HelpCircle;
+  }
+
+  return (
+    <g transform={`translate(${-size / 2}, ${-size / 2})`} style={{ pointerEvents: 'none' }}>
+      <IconComponent size={size} color="#ffffff" strokeWidth={2.2} style={{ opacity: 0.95 }} />
+    </g>
+  );
 }
 
 export default function BrainExplorer({ brainMode, activity, detailedLogs, onClose, onReset }) {
@@ -249,6 +421,10 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState('');
   const [nodeRefs, setNodeRefs] = useState(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState(null);
+
+  const nodeSizeMult = 1.2;
+  const edgeLength = 200;
 
   const selectedRef = useRef(selected);
   const serverContentRef = useRef('');
@@ -285,6 +461,43 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     
     return actions;
   }, [act.events, act.processing, detailedLogs]);
+
+  const selectedConnections = useMemo(() => {
+    if (!selected || !sim) return null;
+    const nodeId = selected.id;
+    const incoming = [];
+    const outgoing = [];
+
+    sim.links.forEach((l) => {
+      if (l.source.id === nodeId) {
+        outgoing.push({ id: l.target.id, label: l.target.label, type: l.target.type });
+      } else if (l.target.id === nodeId) {
+        incoming.push({ id: l.source.id, label: l.source.label, type: l.source.type });
+      }
+    });
+
+    if (sim.crossLinks) {
+      sim.crossLinks.forEach((l) => {
+        if (l.source.id === nodeId) {
+          outgoing.push({ id: l.target.id, label: l.target.label, type: l.target.type });
+        } else if (l.target.id === nodeId) {
+          incoming.push({ id: l.source.id, label: l.source.label, type: l.source.type });
+        }
+      });
+    }
+
+    // Deduplicate lists by ID
+    const uniqueIn = Array.from(new Map(incoming.map(item => [item.id, item])).values());
+    const uniqueOut = Array.from(new Map(outgoing.map(item => [item.id, item])).values());
+
+    return { incoming: uniqueIn, outgoing: uniqueOut };
+  }, [selected?.id, sim]);
+
+  const { frontmatter, body } = useMemo(() => {
+    return parseFrontmatter(editorContent);
+  }, [editorContent]);
+
+
 
   const hasActivity = act.processing || act.events.length > 0 || act.stream;
 
@@ -367,7 +580,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     api.fetchBrainGraph(brainMode)
       .then((data) => {
         if (cancelled) return;
-        setSim(settle(initSimulation(data)));
+        setSim(settle(initSimulation(data, nodeSizeMult, edgeLength)));
         simAlpha.current = 1.0;
         setLoading(false);
       })
@@ -404,11 +617,14 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
               const updatedLinks = currSim.links
                 .map((l) => ({ source: byId[l.source.id], target: byId[l.target.id] }))
                 .filter((l) => l.source && l.target);
+              const updatedCrossLinks = (currSim.crossLinks || [])
+                .map((l) => ({ source: byId[l.source.id], target: byId[l.target.id] }))
+                .filter((l) => l.source && l.target);
               syncOpenNode(data);
-              return { nodes: updatedNodes, links: updatedLinks, legend: currSim.legend };
+              return { nodes: updatedNodes, links: updatedLinks, crossLinks: updatedCrossLinks, legend: currSim.legend };
             }
 
-            const s = settle(initSimulation(data));
+            const s = settle(initSimulation(data, nodeSizeMult, edgeLength));
             syncOpenNode(data, true);
             simAlpha.current = 1.0;
             return s;
@@ -440,7 +656,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     setRefreshing(true);
     try {
       const data = await api.fetchBrainGraph(brainMode);
-      setSim(() => settle(initSimulation(data)));
+      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
       simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain graph refresh failed:', err);
@@ -461,6 +677,16 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       console.error('Brain file load failed:', err);
     }
   }, [brainMode]);
+
+  const handleEditorPaneClick = useCallback((e) => {
+    const chip = e.target.closest('.brain-ref-chip');
+    if (chip) {
+      const nodeName = chip.getAttribute('data-node');
+      if (nodeName) {
+        selectNodeById(nodeName, nodeName);
+      }
+    }
+  }, [selectNodeById]);
 
   const handleNodeClick = useCallback((node) => selectNodeById(node.id, node.label, node.updated), [selectNodeById]);
 
@@ -541,8 +767,9 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const handleBgMouseDown = useCallback((e) => {
     if (e.target === svgRef.current || e.target.classList.contains('brain-bg-rect')) {
       panDragRef.current = { startX: e.clientX, startY: e.clientY, origPanX: panRef.current.x, origPanY: panRef.current.y };
+      setSelected(null);
     }
-  }, []);
+  }, [setSelected]);
   const handleMouseMove = useCallback((e) => {
     if (dragRef.current) {
       const { node } = dragRef.current;
@@ -570,8 +797,8 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   }, []);
   const handleWheel = useCallback((e) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.92 : 1.08;
-    panRef.current.zoom = Math.max(0.2, Math.min(4, panRef.current.zoom * delta));
+    const zoomFactor = Math.exp(-e.deltaY * 0.0015);
+    panRef.current.zoom = Math.max(0.2, Math.min(4, panRef.current.zoom * zoomFactor));
     forceRender((v) => v + 1);
   }, []);
 
@@ -675,6 +902,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       {tabBar}
 
       <div className="brain-explorer-toolbar" style={{ right: `${rightOffset}px` }}>
+
         <button id="brain-refresh-btn" className="brain-refresh-btn" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh brain view" title="Refresh brain view">
           <svg className={`brain-refresh-icon${refreshing ? ' spinning' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="23 4 23 10 17 10" />
@@ -701,6 +929,17 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
               <feGaussianBlur stdDeviation="3" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
+            <marker
+              id="cross-arrow"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 1.5 L 8 5 L 0 8.5 Z" fill="#7c6fc4" />
+            </marker>
           </defs>
           <rect className="brain-bg-rect" width="100%" height="100%" fill="#fafafc" />
           <g transform={`translate(${cx}, ${cy}) scale(${pan.zoom})`}>
@@ -709,8 +948,28 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
                 stroke={(l.target.color && l.target.depth > 1) ? l.target.color : 'rgba(0,0,0,0.12)'}
                 strokeOpacity={l.target.depth > 1 ? 0.35 : 1} strokeWidth={1.5} />
             ))}
+            {(sim.crossLinks || []).map((l, i) => {
+              const isHovered = hoveredNodeId && (l.source.id === hoveredNodeId || l.target.id === hoveredNodeId);
+              const isOutgoing = l.source.id === hoveredNodeId;
+              return (
+                <line
+                  key={`cross-${i}`}
+                  x1={l.source.x}
+                  y1={l.source.y}
+                  x2={l.target.x}
+                  y2={l.target.y}
+                  className={`brain-graph-cross-link ${isHovered ? 'hovered' : ''} ${isHovered ? (isOutgoing ? 'outgoing' : 'incoming') : ''}`}
+                />
+              );
+            })}
             {nodes.map((n) => (
-              <g key={n.id} className="brain-node-group" style={{ cursor: 'pointer' }}>
+              <g
+                key={n.id}
+                className={`brain-node-group ${selected?.id === n.id ? 'selected' : ''} ${hoveredNodeId === n.id ? 'hovered' : ''}`}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={() => setHoveredNodeId(n.id)}
+                onMouseLeave={() => setHoveredNodeId(null)}
+              >
                 <circle cx={n.x} cy={n.y} r={n.radius + 4} fill={n.color} opacity={0.15} filter="url(#node-glow)" />
                 <circle
                   cx={n.x} cy={n.y} r={n.radius}
@@ -721,6 +980,9 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
                   onClick={() => handleNodeClick(n)}
                   style={{ cursor: 'pointer' }}
                 />
+                <g transform={`translate(${n.x}, ${n.y})`} style={{ pointerEvents: 'none' }}>
+                  <NodeIcon name={n.icon} type={n.type} size={n.radius * 1.1} />
+                </g>
 
                 <text x={n.x} y={n.y + n.radius + 14} textAnchor="middle" fill="rgba(30,41,59,0.9)" fontSize="11" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="600" style={{ pointerEvents: 'none', userSelect: 'none' }}>
                   {n.label}
@@ -731,7 +993,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
         </svg>
 
         {selected && (
-          <div className="brain-editor-pane" style={{ width: `${paneWidth}px` }}>
+          <div className="brain-editor-pane" style={{ width: `${paneWidth}px` }} onClick={handleEditorPaneClick}>
             <div className="brain-editor-resizer" onMouseDown={handleResizerMouseDown} />
             <div className="brain-editor-header">
               {isRenaming ? (
@@ -769,7 +1031,19 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
               <button className={`brain-editor-tab-btn ${editorTab === 'edit' ? 'active' : ''}`} onClick={() => setEditorTab('edit')}>Edit</button>
             </div>
             {editorTab === 'preview' ? (
-              <div className="brain-editor-content brain-editor-preview markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(editorContent || '*No content*') }} />
+              <div className="brain-editor-content brain-editor-preview markdown-body">
+                {Object.keys(frontmatter).length > 0 && (
+                  <div className="brain-node-meta-header">
+                    {Object.entries(frontmatter).map(([key, val]) => (
+                      <div key={key} className="brain-node-meta-item">
+                        <span className="brain-node-meta-key">{key}:</span>
+                        <span className="brain-node-meta-val">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div dangerouslySetInnerHTML={{ __html: replaceWikiLinksWithTags(replaceMentionsWithTags(marked.parse(body || '*No content*'))) }} />
+              </div>
             ) : (
               <textarea id="brain-editor-textarea" className="brain-editor-content" value={editorContent} onChange={(e) => setEditorContent(e.target.value)} />
             )}
@@ -778,14 +1052,52 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
               <div className="brain-refs-panel">
                 <div className="brain-refs-title">Referenced by</div>
                 {nodeRefs.calendar.map((c, i) => (
-                  <div key={`c${i}`} className="brain-ref-line"><span className="brain-ref-kind cal">Calendar</span>{c.text}</div>
+                  <div key={`c${i}`} className="brain-ref-line">
+                    <span className="brain-ref-kind cal">Calendar</span>
+                    <span dangerouslySetInnerHTML={{ __html: replaceWikiLinksWithTags(replaceMentionsWithTags(marked.parseInline(c.text || ''))) }} />
+                  </div>
                 ))}
                 {nodeRefs.journal.map((j, i) => (
-                  <div key={`j${i}`} className="brain-ref-line"><span className="brain-ref-kind jrn">{j.date}</span>{j.text}</div>
+                  <div key={`j${i}`} className="brain-ref-line">
+                    <span className="brain-ref-kind jrn">{j.date}</span>
+                    <span dangerouslySetInnerHTML={{ __html: replaceWikiLinksWithTags(replaceMentionsWithTags(marked.parseInline(j.text || ''))) }} />
+                  </div>
                 ))}
                 {nodeRefs.assistant && (
                   <div className="brain-ref-line"><span className="brain-ref-kind asst">Assistant</span>A behaviour rule references this node.</div>
                 )}
+              </div>
+            )}
+
+            {selectedConnections && (selectedConnections.incoming.length > 0 || selectedConnections.outgoing.length > 0) && (
+              <div className="brain-connections-panel">
+                <div className="brain-connections-title">Connections</div>
+                <div className="brain-connections-body">
+                  {selectedConnections.incoming.map((conn) => (
+                    <button
+                      key={`in-${conn.id}`}
+                      className="brain-connection-chip incoming"
+                      onClick={() => selectNodeById(conn.id, conn.label)}
+                      title={`Linked from ${conn.label}`}
+                    >
+                      <span className="brain-connection-arrow">←</span>
+                      <span className="brain-connection-label">{conn.label}</span>
+                      <span className="brain-connection-type">{conn.type}</span>
+                    </button>
+                  ))}
+                  {selectedConnections.outgoing.map((conn) => (
+                    <button
+                      key={`out-${conn.id}`}
+                      className="brain-connection-chip outgoing"
+                      onClick={() => selectNodeById(conn.id, conn.label)}
+                      title={`Links to ${conn.label}`}
+                    >
+                      <span className="brain-connection-label">{conn.label}</span>
+                      <span className="brain-connection-arrow">→</span>
+                      <span className="brain-connection-type">{conn.type}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -799,6 +1111,61 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
         )}
       </div>
 
+      <div className="brain-zoom-controls" style={{ right: `${rightOffset}px` }}>
+        <button
+          className="brain-zoom-btn"
+          onClick={() => {
+            panRef.current.zoom = Math.max(0.2, panRef.current.zoom - 0.1);
+            forceRender((v) => v + 1);
+          }}
+          title="Zoom out"
+          aria-label="Zoom out"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+        <input
+          type="range"
+          className="brain-zoom-slider"
+          min="0.2"
+          max="4"
+          step="0.05"
+          value={pan.zoom}
+          onChange={(e) => {
+            panRef.current.zoom = parseFloat(e.target.value);
+            forceRender((v) => v + 1);
+          }}
+          aria-label="Zoom level"
+        />
+        <button
+          className="brain-zoom-btn"
+          onClick={() => {
+            panRef.current.zoom = Math.min(4, panRef.current.zoom + 0.1);
+            forceRender((v) => v + 1);
+          }}
+          title="Zoom in"
+          aria-label="Zoom in"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+        <span className="brain-zoom-percent">{Math.round(pan.zoom * 100)}%</span>
+        <button
+          className="brain-zoom-reset-btn"
+          onClick={() => {
+            panRef.current.zoom = 1;
+            panRef.current.x = 0;
+            panRef.current.y = 0;
+            forceRender((v) => v + 1);
+          }}
+          title="Reset pan and zoom"
+        >
+          Reset
+        </button>
+      </div>
 
       {activityLog}
     </div>

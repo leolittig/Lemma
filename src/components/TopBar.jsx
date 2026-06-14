@@ -40,6 +40,7 @@ export default function TopBar({
           </svg>
           <span className="topbar-new-label">New chat</span>
         </button>
+        <span className="topbar-app-title">LEMMA</span>
       </div>
       <ModelPicker {...modelPickerProps} />
       {onToggleBrainExplorer && (
