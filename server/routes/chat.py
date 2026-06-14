@@ -21,6 +21,7 @@ Every MLX generation here (routing, chat, post-processing) holds
 model_manager.generation_lock — see that module for why.
 """
 
+import asyncio
 import json
 import re
 import threading
@@ -274,12 +275,13 @@ def _build_system_prompt(conv_system_prompt: str, brain_mode, files_to_read: lis
 
 
 def _run_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
-                         assistant_text: str, brain_activity: dict):
+                         assistant_text: str, brain_activity: dict, profile: str = "default"):
     """Update the memory graph after a turn. Runs in a background thread.
 
     Wraps the actual work in a processing marker so the Brain Explorer can show
     that the graph is being updated (and is briefly stale) until it refreshes.
     """
+    config.active_profile.set(profile)
     storage_brain.begin_processing()
     try:
         _do_post_processing(cid, msg_pos, mode, user_text, assistant_text, brain_activity)
@@ -313,25 +315,30 @@ def _get_manual_for_turn(mode: str, user_text: str, assistant_text: str, files_r
 
     combined_text = f"{user_text} {assistant_text}".lower()
 
+    include_people = "person" in read_types or any(k in combined_text for k in [
+        "friend", "brother", "sister", "mom", "dad", "mother", "father", 
+        "girlfriend", "boyfriend", "husband", "wife", "partner", "son", 
+        "daughter", "cousin", "family", "born", "relationship", "meet", 
+        "who is", "introduced"
+    ])
+    include_tasks = "task" in read_types or any(k in combined_text for k in [
+        "todo", "to-do", "task", "project", "assignment", "homework", 
+        "exam", "test", "errand", "obligation", "deadline", "due", 
+        "status", "complete", "finish", "done", "need to"
+    ])
+    include_activities = "activity" in read_types or any(k in combined_text for k in [
+        "job", "work", "school", "university", "college", "class", 
+        "gig", "business", "hobby", "sport", "club", "practice", "play", "run"
+    ])
+    include_groups = "group" in read_types or include_people or include_tasks or include_activities or any(k in combined_text for k in [
+        "friends", "family", "group", "team", "classmates", "coworkers"
+    ])
+
     file_mappings = [
-        ("people.md", "person" in read_types or any(k in combined_text for k in [
-            "friend", "brother", "sister", "mom", "dad", "mother", "father", 
-            "girlfriend", "boyfriend", "husband", "wife", "partner", "son", 
-            "daughter", "cousin", "family", "born", "relationship", "meet", 
-            "who is", "introduced"
-        ])),
-        ("tasks.md", "task" in read_types or any(k in combined_text for k in [
-            "todo", "to-do", "task", "project", "assignment", "homework", 
-            "exam", "test", "errand", "obligation", "deadline", "due", 
-            "status", "complete", "finish", "done", "need to"
-        ])),
-        ("activities.md", "activity" in read_types or any(k in combined_text for k in [
-            "job", "work", "school", "university", "college", "class", 
-            "gig", "business", "hobby", "sport", "club", "practice", "play", "run"
-        ])),
-        ("groups.md", "group" in read_types or any(k in combined_text for k in [
-            "friends", "family", "group", "team", "classmates", "coworkers"
-        ])),
+        ("people.md", include_people),
+        ("tasks.md", include_tasks),
+        ("activities.md", include_activities),
+        ("groups.md", include_groups),
         ("calendar.md", "Calendar" in files_read or any(k in combined_text for k in [
             "birthday", "anniversary", "christmas", "valentine", "calendar", 
             "event", "schedule", "date", "next week", "tomorrow", "yesterday", 
@@ -424,7 +431,7 @@ def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
     try:
         with generation_lock:
             response_text = _generate_once(
-                model, processor, prompt, max_tokens=1500,
+                model, processor, prompt, max_tokens=3000,
                 on_token=storage_brain.append_stream)
     except Exception as e:
         print(f"Post-processing generation error: {e}")
@@ -560,6 +567,92 @@ def _context_headers(cid, trimmed, out_ranges):
     return {}
 
 
+def parse_json_from_response(text: str):
+    # Strip markdown code blocks if any
+    clean_text = re.sub(r"```(?:json)?\s*(.*?)\s*```", r"\1", text, flags=re.DOTALL).strip()
+    match = re.search(r"\{.*\}", clean_text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            pass
+    # Try parsing clean_text directly
+    try:
+        return json.loads(clean_text)
+    except Exception:
+        pass
+    return None
+
+
+def _run_title_generation(cid: str):
+    """Generates a title for the conversation and renames it if it deviates too much from the current title."""
+    try:
+        conv = database.get_conversation(cid)
+        if not conv:
+            return
+
+        messages = conv.get("messages", [])
+        if not messages:
+            return
+
+        model_path = manager.path
+        model = manager.get_model(model_path)
+        processor = manager.get_processor(model_path)
+        if not model or not processor:
+            return
+
+        # Format conversation history
+        history_lines = []
+        for msg in messages:
+            role = msg["role"].capitalize()
+            text = msg["text"] or ""
+            history_lines.append(f"{role}: {text}")
+        history_text = "\n".join(history_lines)
+
+        # Keep history within limits (e.g. last 6000 chars)
+        if len(history_text) > 6000:
+            history_text = "..." + history_text[-6000:]
+
+        current_title = (conv.get("title") or "").strip()
+        if not current_title or current_title == "New chat":
+            current_title_arg = "None"
+        else:
+            current_title_arg = current_title
+
+        prompt = (
+            "Analyze the following chat conversation history. Propose a very small, extremely concise, and descriptive title (strictly 2 to 3 words) for it. "
+            "Also decide if the conversation topic has deviated/shifted so much from the current title that the chat should be renamed. "
+            "If the current title is empty, 'New chat', or no longer represents the main topic of the conversation, set should_rename to true.\n"
+            "Keep the proposed_title very brief and focused, avoiding extra fluff words.\n\n"
+            f"Current Title: {current_title_arg}\n\n"
+            "Conversation:\n"
+            f"{history_text}\n\n"
+            "You MUST respond ONLY with a JSON object in this format:\n"
+            "{\n"
+            "  \"proposed_title\": \"Write the new title here\",\n"
+            "  \"should_rename\": true or false\n"
+            "}\n"
+        )
+
+        with generation_lock:
+            response_text = _generate_once(model, processor, prompt, max_tokens=150)
+
+        data = parse_json_from_response(response_text)
+        if data and isinstance(data, dict):
+            proposed_title = (data.get("proposed_title") or "").strip()
+            should_rename = data.get("should_rename")
+            if isinstance(should_rename, str):
+                should_rename = should_rename.lower() in ("true", "yes", "1")
+            if proposed_title:
+                if not current_title or current_title == "New chat" or should_rename is True:
+                    # Limit title length to 60 characters
+                    proposed_title = proposed_title[:60]
+                    database.update_conversation(cid, title=proposed_title)
+                    print(f"[Title Gen] Chat {cid} renamed from '{current_title}' to '{proposed_title}'")
+    except Exception as e:
+        print(f"Error generating chat title: {e}")
+
+
 async def _generate(request, cid, formatted, image_paths, audio_paths,
                     gen_kwargs, strip_thinking, chat_model, chat_processor,
                     brain_mode, brain_activity, user_text):
@@ -629,8 +722,19 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
     # generator — the generator IS the response.) The thread serializes its
     # generation through generation_lock.
     if brain_mode:
+        profile = config.active_profile.get()
         threading.Thread(
             target=_run_post_processing,
-            args=(cid, msg_pos, brain_mode, user_text, clean, brain_activity),
+            args=(cid, msg_pos, brain_mode, user_text, clean, brain_activity, profile),
             daemon=True,
         ).start()
+
+    # Update the conversation title if needed in a background thread so the response isn't held open
+    try:
+        threading.Thread(
+            target=_run_title_generation,
+            args=(cid,),
+            daemon=True,
+        ).start()
+    except Exception as e:
+        print(f"Error starting title generation thread: {e}")

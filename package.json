@@ -1,15 +1,16 @@
 {
   "name": "lemma-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \".venv/bin/python app.py\" \"vite\"",
+    "dev": "trap 'echo; echo === System terminated. Press ENTER to exit ===; trap - EXIT INT TERM; stty sane < /dev/tty 2>/dev/null' EXIT INT TERM; concurrently -k \".venv/bin/python app.py\" \"node -e \\\"(function check() { const s = require('net').connect(8000, '127.0.0.1', () => { s.end(); process.exit(0); }).on('error', () => setTimeout(check, 100)); })()\\\" && vite < /dev/null\"",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "katex": "^0.17.0",
+    "lucide-react": "^1.18.0",
     "marked": "^12.0.0",
     "marked-katex-extension": "^5.1.10",
     "react": "^18.3.1",

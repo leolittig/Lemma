@@ -27,7 +27,7 @@ export default function BrainNameSetup({ brainMode, onDone }) {
 
   return (
     <div className="brain-setup-overlay">
-      <form className="brain-setup-inner" onSubmit={submit}>
+      <form className="brain-setup-inner" onSubmit={submit} autoComplete="off">
         <h1 className="brain-setup-title">What's your name?</h1>
         <input
           className="brain-setup-input"
@@ -37,6 +37,9 @@ export default function BrainNameSetup({ brainMode, onDone }) {
           placeholder="Type your name"
           autoFocus
           maxLength={40}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck="false"
         />
         {error && <div className="brain-setup-error">{error}</div>}
         <button className="brain-setup-btn" type="submit" disabled={busy || !name.trim()}>

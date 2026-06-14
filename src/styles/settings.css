@@ -216,3 +216,38 @@ button.settings-action-btn.secondary:hover {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
   box-sizing: border-box;
 }
+
+.settings-footer-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 2.25rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  width: 100%;
+}
+
+button.settings-action-btn.danger-text {
+  background: transparent !important;
+  color: #ef4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.25) !important;
+  padding: 0.6rem 1.25rem !important;
+  border-radius: 2rem !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: none !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+button.settings-action-btn.danger-text:hover {
+  background: rgba(239, 68, 68, 0.05) !important;
+  border-color: rgba(239, 68, 68, 0.45) !important;
+}
+
+button.settings-action-btn.danger-text:active {
+  transform: translateY(1px) scale(0.98) !important;
+}

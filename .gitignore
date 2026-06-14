@@ -28,7 +28,10 @@ system_prompt.txt
 # Conversation history DB + uploaded media (created at runtime)
 chats.db
 chats.db-journal
+chats.db-shm
+chats.db-wal
 uploads/
+profiles/
 
 # OS / Editor Caches & Configs
 .DS_Store

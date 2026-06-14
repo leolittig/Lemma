@@ -30,6 +30,29 @@
   gap: 0.4rem;
 }
 
+.topbar-app-title {
+  font-family: inherit;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #000000;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-left: 0.75rem;
+  margin-right: 0.5rem;
+  user-select: none;
+}
+
+.topbar-logo {
+  height: 4.5rem;
+  max-height: 100px;
+  object-fit: contain;
+  margin-left: 0.25rem;
+  margin-right: 0.5rem;
+  margin-top: 0.5rem;
+  filter: url(#make-white-transparent);
+  user-select: none;
+}
+
 button.topbar-icon-btn {
   width: 2.25rem;
   height: 2.25rem;

@@ -90,7 +90,7 @@
 .sidebar-item {
   position: relative;
   display: flex;
-  border-radius: 999px;
+  border-radius: 14px;
   cursor: pointer;
   direction: ltr; /* Reset to left-to-right */
 }
@@ -105,8 +105,8 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.8rem 0.9rem;
-  border-radius: 999px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 14px;
   background: #ffffff;
   transform-origin: center;
   translate: 0 var(--flip-dy, 0px);
@@ -162,9 +162,13 @@
   flex: 1;
   font-size: 0.9rem;
   color: #2c2c2e;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.25rem;
+  word-break: break-word;
 }
 
 .sidebar-item.active .sidebar-item-title {
@@ -213,8 +217,237 @@ button.sidebar-item-btn:disabled {
   font-size: 0.9rem;
   padding: 0.2rem 0.7rem;
   border: 1px solid rgba(0, 122, 255, 0.45);
-  border-radius: 999px;
+  border-radius: 8px;
   outline: none;
   background: #fff;
   min-width: 0;
+}
+
+/* Sidebar Profile Footer and Selector */
+.sidebar-footer {
+  margin-top: auto;
+  padding: 1.25rem 1.5rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  z-index: 18;
+}
+
+button.sidebar-profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  height: auto;
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.1s ease;
+  justify-content: flex-start;
+  color: inherit;
+}
+
+button.sidebar-profile-btn:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+button.sidebar-profile-btn:active {
+  transform: scale(0.98);
+}
+
+.sidebar-profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.sidebar-profile-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #1a1a1c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-profile-menu {
+  position: absolute;
+  bottom: calc(100% - 8px);
+  left: 1rem;
+  right: 1rem;
+  background: transparent;
+  border: none;
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 25;
+  animation: profileMenuIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-profile-menu::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 20px;
+  z-index: -1;
+  pointer-events: none;
+  box-shadow: 0 0 25px 12px #f8f9fa, 0 0 50px 26px #f8f9fa;
+  clip-path: inset(-200px -200px 5px -200px);
+}
+
+@keyframes profileMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sidebar-profile-menu-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8e8e93;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.sidebar-profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.sidebar-profile-item-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  border-radius: 999px;
+  background: #ffffff;
+  padding-right: 0.6rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  transition: background-color 0.15s ease, transform 0.15s ease;
+  box-sizing: border-box;
+}
+
+.sidebar-profile-item-wrapper:hover {
+  background-color: #f0f1f4;
+}
+
+.sidebar-profile-item-wrapper.active {
+  background-color: #e9f2ff;
+}
+
+button.sidebar-profile-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  justify-content: flex-start;
+  box-shadow: none;
+  color: inherit;
+  min-width: 0;
+}
+
+button.sidebar-profile-item:hover {
+  background-color: transparent;
+}
+
+.sidebar-profile-item-wrapper.active .profile-name-text {
+  font-weight: 600;
+  color: #007aff;
+}
+
+button.sidebar-profile-delete-btn {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: transparent;
+  color: #8a8a8e;
+  border: none;
+  cursor: pointer;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+button.sidebar-profile-delete-btn:hover {
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+}
+
+.profile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.profile-name-text {
+  font-size: 0.85rem;
+  color: #2c2c2e;
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-check {
+  color: #007aff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+button.sidebar-profile-create-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+  padding: 0.7rem;
+  background-color: rgba(0, 122, 255, 0.08);
+  color: #007aff;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.03);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+button.sidebar-profile-create-btn:hover {
+  background-color: rgba(0, 122, 255, 0.12);
 }

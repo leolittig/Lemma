@@ -6,6 +6,15 @@
 // (see vite.config.js); in production the same server serves the built app,
 // so the relative paths work in both modes.
 
+// Monkey-patch window.fetch to inject X-Profile header globally
+const originalFetch = window.fetch;
+window.fetch = function (url, options = {}) {
+  const profile = localStorage.getItem('active_profile') || 'default';
+  options.headers = options.headers || {};
+  options.headers['X-Profile'] = profile;
+  return originalFetch(url, options);
+};
+
 const postJSON = (url, body, options = {}) =>
   fetch(url, {
     method: 'POST',
@@ -207,3 +216,43 @@ export async function setBrainMode(mode) {
   const res = await postJSON('/api/brain/mode', { mode });
   return res.json();
 }
+
+export async function deleteProfile(profileName) {
+  const res = await fetch(`/api/profile/${encodeURIComponent(profileName)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete profile');
+  return res.json();
+}
+
+export async function editCalendarEvent(mode, ts, text, newText) {
+  const res = await postJSON(`/api/brain/calendar/edit?mode=${encodeURIComponent(mode)}`, {
+    ts,
+    text,
+    new_text: newText,
+  });
+  if (!res.ok) {
+    let msg = 'Edit calendar event failed';
+    try {
+      const errData = await res.json();
+      msg = errData.detail || errData.message || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function deleteCalendarEvent(mode, ts, text) {
+  const res = await postJSON(`/api/brain/calendar/delete?mode=${encodeURIComponent(mode)}`, {
+    ts,
+    text,
+  });
+  if (!res.ok) {
+    let msg = 'Delete calendar event failed';
+    try {
+      const errData = await res.json();
+      msg = errData.detail || errData.message || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+

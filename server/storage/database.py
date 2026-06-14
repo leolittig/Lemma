@@ -128,6 +128,19 @@ def get_conversation(cid: str):
     return result
 
 
+def get_empty_conversation():
+    """Finds the ID of an empty conversation (one with 0 messages), if any exists."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT c.id FROM conversations c"
+            " LEFT JOIN messages m ON c.id = m.conversation_id"
+            " GROUP BY c.id"
+            " HAVING COUNT(m.id) = 0"
+            " LIMIT 1"
+        ).fetchone()
+    return row["id"] if row else None
+
+
 def update_conversation(cid: str, **fields):
     """Update title/system_prompt/model; bumps updated_at."""
     fields = {k: v for k, v in fields.items() if k in ("title", "system_prompt", "model")}

@@ -13,6 +13,7 @@ include it below.
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 
 from . import config
 from .mlx_compat import install_lenient_weight_loading
@@ -21,17 +22,60 @@ from .routes import chat, conversations, files, frontend, models, brain
 from .storage import database, uploads
 from .storage import brain as storage_brain
 
-install_lenient_weight_loading()
-manager.load_initial()
+import re
+from fastapi import Request, HTTPException
+from fastapi.responses import FileResponse
 
-app = FastAPI(title="Lemma")
+install_lenient_weight_loading()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load initial model on server startup
+    manager.load_initial()
+    yield
+    # Unload model on shutdown
+    manager.unload()
+
+app = FastAPI(title="Lemma", lifespan=lifespan)
 
 database.init_db()
 uploads.ensure_uploads_dir()
 storage_brain.init_brains()
 
-# Uploaded attachments are served straight from disk: /uploads/<id>.
-app.mount("/uploads", StaticFiles(directory=str(config.UPLOADS_DIR)), name="uploads")
+# Keep track of initialized profiles to avoid double initialization checks
+_initialized_profiles = {"default"}
+
+@app.middleware("http")
+async def active_profile_middleware(request: Request, call_next):
+    profile = request.headers.get("X-Profile", "default")
+    profile = re.sub(r"[^a-zA-Z0-9_\-]", "", profile)
+    if not profile:
+        profile = "default"
+
+    token = config.active_profile.set(profile)
+
+    if profile not in _initialized_profiles:
+        # Bootstrap folders/db dynamically on first request to this profile
+        db_file = config.get_db_file()
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+        database.init_db()
+        uploads.ensure_uploads_dir()
+        storage_brain.init_brains()
+        _initialized_profiles.add(profile)
+
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        config.active_profile.reset(token)
+
+# Serve uploaded attachments dynamically from the active profile's uploads directory
+@app.get("/uploads/{uid}")
+async def serve_upload(uid: str):
+    p = config.UPLOADS_DIR / uid
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return FileResponse(p)
 
 app.include_router(chat.router)
 app.include_router(models.router)

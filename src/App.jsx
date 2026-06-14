@@ -60,6 +60,73 @@ export default function App() {
   const [showBrainExplorer, setShowBrainExplorer] = useState(false);
   // null = unknown/loading, true/false = whether the root node is set up.
   const [brainInitialized, setBrainInitialized] = useState(null);
+  const [userName, setUserName] = useState('');
+
+  const [profiles, setProfiles] = useState(() => {
+    try {
+      const stored = localStorage.getItem('profiles_list');
+      if (!stored) return [{ id: 'default', name: 'Default', customNamed: false }];
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return [{ id: 'default', name: 'Default', customNamed: false }];
+      return parsed.map(p => {
+        if (typeof p === 'string') {
+          return { id: p, name: p === 'default' ? 'Default' : p, customNamed: p !== 'default' };
+        }
+        if (p && typeof p === 'object' && p.id) {
+          return {
+            id: p.id,
+            name: p.name || p.id,
+            customNamed: p.customNamed !== undefined ? p.customNamed : (p.id !== 'default')
+          };
+        }
+        return null;
+      }).filter(Boolean);
+    } catch {
+      return [{ id: 'default', name: 'Default', customNamed: false }];
+    }
+  });
+
+  const [activeProfile, setActiveProfile] = useState(() => {
+    return localStorage.getItem('active_profile') || 'default';
+  });
+
+  const activeProfileObj = profiles.find(p => p.id === activeProfile) || { id: activeProfile, name: activeProfile };
+
+  const switchProfile = (profileId) => {
+    localStorage.setItem('active_profile', profileId);
+    window.location.reload();
+  };
+
+  const handleCreateProfile = () => {
+    const nextNum = profiles.length + 1;
+    const cleanId = `profile_${nextNum}_${Date.now()}`;
+    const displayName = `New Profile ${nextNum}`;
+    
+    const newProfile = { id: cleanId, name: displayName, customNamed: false };
+    const nextProfiles = [...profiles, newProfile];
+    setProfiles(nextProfiles);
+    localStorage.setItem('profiles_list', JSON.stringify(nextProfiles));
+    switchProfile(cleanId);
+  };
+
+  const handleDeleteProfile = async (profile) => {
+    if (profile.id === activeProfile) {
+      alert("Cannot delete the active profile.");
+      return;
+    }
+    const confirm = window.confirm(`Are you sure you want to delete profile "${profile.name}"? This will permanently delete all of its conversations, files, and memory.`);
+    if (!confirm) return;
+    
+    try {
+      await api.deleteProfile(profile.id);
+    } catch (err) {
+      console.error("Failed to delete profile folder on backend:", err);
+    }
+    
+    const nextProfiles = profiles.filter(p => p.id !== profile.id);
+    setProfiles(nextProfiles);
+    localStorage.setItem('profiles_list', JSON.stringify(nextProfiles));
+  };
 
   // Check setup state at boot (and when the brain is toggled on). If there's no
   // brain yet, a full-screen name prompt appears before anything else.
@@ -71,7 +138,29 @@ export default function App() {
     const checkStatus = () => {
       api.fetchBrainStatus(BRAIN_MODE)
         .then((s) => {
-          if (!cancelled) setBrainInitialized(!!s.initialized);
+          if (cancelled) return;
+          if (s.initialized) {
+            setBrainInitialized(true);
+            setUserName(s.user_name || '');
+          } else {
+            // Auto-initialize if it is a custom profile with a valid name and already named by the user
+            if (activeProfileObj && activeProfileObj.name && activeProfileObj.name !== 'Default' && activeProfileObj.id !== 'default' && activeProfileObj.customNamed) {
+              console.log(`Auto-initializing brain for profile: ${activeProfileObj.name}`);
+              api.initBrain(BRAIN_MODE, activeProfileObj.name)
+                .then(() => {
+                  if (!cancelled) {
+                    setBrainInitialized(true);
+                    setUserName(activeProfileObj.name);
+                  }
+                })
+                .catch((err) => {
+                  console.error('Failed to auto-initialize brain:', err);
+                  if (!cancelled) setBrainInitialized(false);
+                });
+            } else {
+              setBrainInitialized(false);
+            }
+          }
         })
         .catch((err) => {
           console.error('Failed to fetch brain status, retrying...', err);
@@ -86,7 +175,7 @@ export default function App() {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [settings.brainEnabled]);
+  }, [settings.brainEnabled, activeProfileObj]);
 
   const handleSelectModel = async (model) => {
     setShowModelPicker(false);
@@ -126,10 +215,22 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }} aria-hidden="true">
+        <defs>
+          <filter id="make-white-transparent">
+            <feColorMatrix type="matrix" values="
+              0 0 0 0 0
+              0 0 0 0 0
+              0 0 0 0 0
+             -1 0 0 1 0
+            " />
+          </filter>
+        </defs>
+      </svg>
       <TopBar
         sidebarCollapsed={settings.sidebarCollapsed}
         onToggleSidebar={() => settings.setSidebarCollapsed((v) => !v)}
-        onNewChat={conversations.newChat}
+        onNewChat={() => { conversations.newChat(); setShowBrainExplorer(false); }}
         onOpenSettings={() => setShowSettings(true)}
         onToggleBrainExplorer={settings.brainEnabled ? (() => setShowBrainExplorer((v) => !v)) : null}
         showBrainExplorer={showBrainExplorer && settings.brainEnabled}
@@ -155,9 +256,14 @@ export default function App() {
           conversations={conversations.conversations}
           activeId={conversations.activeId}
           collapsed={settings.sidebarCollapsed}
-          onSelect={conversations.select}
+          onSelect={(id) => { conversations.select(id); setShowBrainExplorer(false); }}
           onRename={conversations.rename}
           onDelete={conversations.remove}
+          profiles={profiles}
+          activeProfile={activeProfile}
+          onSwitchProfile={switchProfile}
+          onCreateProfile={handleCreateProfile}
+          onDeleteProfile={handleDeleteProfile}
         />
         <div className="app-container">
           {showBrainExplorer ? (
@@ -178,6 +284,7 @@ export default function App() {
                 registerMessageRef={registerMessageRef}
                 scroll={scroll}
                 onThinkingOpened={scroll.releaseLock}
+                userName={userName || (activeProfileObj.name !== 'Default' ? activeProfileObj.name : '')}
               />
               <Composer
                 inputText={chat.inputText}
@@ -214,7 +321,13 @@ export default function App() {
       {settings.brainEnabled && brainInitialized === false && (
         <BrainNameSetup
           brainMode={BRAIN_MODE}
-          onDone={() => setBrainInitialized(true)}
+          onDone={(name) => {
+            const updated = profiles.map(p => p.id === activeProfile ? { ...p, name, customNamed: true } : p);
+            setProfiles(updated);
+            localStorage.setItem('profiles_list', JSON.stringify(updated));
+            setBrainInitialized(true);
+            setUserName(name);
+          }}
         />
       )}
     </div>
