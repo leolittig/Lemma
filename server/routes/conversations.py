@@ -26,11 +26,23 @@ def list_conversations():
 
 @router.post("/conversations")
 def create_conversation(cfg: ConversationCreateRequest):
-    # New chats are seeded with the global default system prompt unless the
-    # client sent an explicit one.
+    # Check if there is an existing empty conversation first
+    empty_cid = database.get_empty_conversation()
     sysp = cfg.system_prompt if cfg.system_prompt is not None else load_default_system_prompt()
+    model_path = cfg.model or manager.path
+
+    if empty_cid:
+        database.update_conversation(
+            empty_cid,
+            title=cfg.title,
+            model=model_path,
+            system_prompt=sysp
+        )
+        return {"id": empty_cid}
+
+    # Otherwise, create a new one
     cid = database.create_conversation(
-        title=cfg.title, model=cfg.model or manager.path, system_prompt=sysp
+        title=cfg.title, model=model_path, system_prompt=sysp
     )
     return {"id": cid}
 

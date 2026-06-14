@@ -5,29 +5,78 @@ how aggressively long conversations are trimmed, this is the file to edit.
 """
 
 from pathlib import Path
+from contextvars import ContextVar
 
 # The project root is the directory containing app.py (one level above this
 # package). Anchoring paths here means the server finds its data regardless of
 # the directory it was launched from.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# The main directory holding all memory graph variations.
+# Thread-safe, async-safe contextvar to hold the active profile name
+active_profile: ContextVar[str] = ContextVar("active_profile", default="default")
+
+def get_db_file() -> Path:
+    p = active_profile.get()
+    if p == "default":
+        return PROJECT_ROOT / "chats.db"
+    return PROJECT_ROOT / "profiles" / p / "chats.db"
+
+def get_brain_root() -> Path:
+    p = active_profile.get()
+    if p == "default":
+        return PROJECT_ROOT / "brain"
+    return PROJECT_ROOT / "profiles" / p / "brain"
+
+def get_uploads_dir() -> Path:
+    p = active_profile.get()
+    if p == "default":
+        return PROJECT_ROOT / "uploads"
+    return PROJECT_ROOT / "profiles" / p / "uploads"
+
+def get_system_prompt_file() -> Path:
+    p = active_profile.get()
+    if p == "default":
+        return PROJECT_ROOT / "system_prompt.txt"
+    return PROJECT_ROOT / "profiles" / p / "system_prompt.txt"
+
+class DynamicBrainModesDict(dict):
+    def __getitem__(self, key):
+        if key != "active":
+            raise KeyError(key)
+        return get_brain_root() / "active"
+
+    def __contains__(self, key):
+        return key == "active"
+
+    def keys(self):
+        return ["active"]
+
+    def values(self):
+        return [self["active"]]
+
+    def items(self):
+        return [("active", self["active"])]
+
+    def get(self, key, default=None):
+        if key == "active":
+            return self["active"]
+        return default
+
+# The main directory holding all memory graph variations (compatibility root)
 BRAIN_ROOT = PROJECT_ROOT / "brain"
 
-# The main directory holding all memory graph files.
-BRAIN_MODES = {
-    "active": BRAIN_ROOT / "active",
-}
+# The main directory holding all memory graph files (dynamic dict)
+BRAIN_MODES = DynamicBrainModesDict()
 
-# Where conversations and messages are stored (SQLite).
-DB_FILE = PROJECT_ROOT / "chats.db"
-
-# Where uploaded images/audio files are saved. Served back at /uploads/<id>.
-UPLOADS_DIR = PROJECT_ROOT / "uploads"
-
-# The global default system prompt (the "Instructions" field in Settings) is
-# persisted to this file. Deleted when the prompt is cleared.
-SYSTEM_PROMPT_FILE = PROJECT_ROOT / "system_prompt.txt"
+# Module-level __getattr__ for PEP 562 dynamic variables
+def __getattr__(name: str):
+    if name == "DB_FILE":
+        return get_db_file()
+    elif name == "UPLOADS_DIR":
+        return get_uploads_dir()
+    elif name == "SYSTEM_PROMPT_FILE":
+        return get_system_prompt_file()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Hugging Face stores downloaded models here; we scan it to list local models.
 HF_CACHE_DIR = Path.home() / ".cache" / "huggingface" / "hub"
