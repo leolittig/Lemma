@@ -133,6 +133,8 @@ How I (the assistant) should behave: persona, tone, and the user's response
 preferences. Not part of the knowledge graph.
 
 ## Persona & Tone
+- When the user mentions facts, tasks, assignments, events, or details to remember, acknowledge them naturally and let the memory system record them automatically. Do NOT ask the user for permission to register them, and do NOT proactively prompt the user for additional details (like exact dates or extra descriptions) unless absolutely necessary for clarification.
+- If the user later provides additional details about a previously mentioned task or assignment, merge it into the existing context. Only ask if it is the same assignment if you are genuinely uncertain.
 
 ## Response Preferences
 - (timezone, units, language/style, chat preferences go here)
@@ -591,11 +593,18 @@ def calendar_mention_counts(mode: str) -> dict:
 
 
 def append_calendar(mode: str, entry_text: str):
-    """Append one dated row to Calendar.md under '## Entries'. The recorded
-    timestamp is added automatically; the entry text carries the verbal event
-    date and any @node references. Append-only, so history is never clobbered."""
-    entry_text = " ".join((entry_text or "").split())
+    """Append dated rows to Calendar.md under '## Entries'. The recorded
+    timestamp is added automatically; each non-empty line of the entry text
+    carries the verbal event date and any @node references. Append-only, so
+    history is never clobbered."""
     if not entry_text:
+        return
+    lines_to_add = []
+    for line in entry_text.splitlines():
+        cleaned = " ".join(line.split()).strip()
+        if cleaned:
+            lines_to_add.append(cleaned)
+    if not lines_to_add:
         return
     brain_dir = get_brain_dir(mode)
     path = brain_dir / "Calendar.md"
@@ -603,14 +612,83 @@ def append_calendar(mode: str, entry_text: str):
         init_brains()
     content = path.read_text(encoding="utf-8")
     now_str = datetime.now().strftime(DATETIME_FORMAT)
-    line = f"- [{now_str}] {entry_text}"
+    
+    new_lines = []
+    for item in lines_to_add:
+        new_lines.append(f"- [{now_str}] {item}")
+    lines_block = "\n".join(new_lines) + "\n"
+    
     if not content.endswith("\n"):
         content += "\n"
     if "## Entries" in content:
-        content += line + "\n"
+        content += lines_block
     else:
-        content += f"\n## Entries\n{line}\n"
+        content += f"\n## Entries\n{lines_block}"
     path.write_text(_bump_updated(content), encoding="utf-8")
+
+
+def edit_calendar_event(mode: str, ts: str, text: str, new_text: str):
+    """Modify an existing calendar event's text content, matching by timestamp and exact text."""
+    path = get_brain_dir(mode) / "Calendar.md"
+    if not path.exists():
+        raise ValueError("Calendar.md does not exist.")
+    
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    found = False
+    new_lines = []
+    
+    target_clean = text.strip()
+    for line in lines:
+        m = _CAL_LOG_RE.match(line)
+        if m:
+            line_ts, line_text = m.group(1), m.group(2).strip()
+            if line_ts == ts and line_text == target_clean and not found:
+                new_lines.append(f"- [{ts}] {new_text.strip()}")
+                found = True
+                continue
+        new_lines.append(line)
+        
+    if not found:
+        raise ValueError("Event not found in calendar.")
+        
+    new_content = "\n".join(new_lines)
+    if not new_content.endswith("\n"):
+        new_content += "\n"
+        
+    path.write_text(_bump_updated(new_content), encoding="utf-8")
+
+
+def delete_calendar_event(mode: str, ts: str, text: str):
+    """Delete an existing calendar event, matching by timestamp and exact text."""
+    path = get_brain_dir(mode) / "Calendar.md"
+    if not path.exists():
+        raise ValueError("Calendar.md does not exist.")
+    
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    found = False
+    new_lines = []
+    
+    target_clean = text.strip()
+    for line in lines:
+        m = _CAL_LOG_RE.match(line)
+        if m:
+            line_ts, line_text = m.group(1), m.group(2).strip()
+            if line_ts == ts and line_text == target_clean and not found:
+                found = True
+                continue
+        new_lines.append(line)
+        
+    if not found:
+        raise ValueError("Event not found in calendar.")
+        
+    new_content = "\n".join(new_lines)
+    if not new_content.endswith("\n"):
+        new_content += "\n"
+        
+    path.write_text(_bump_updated(new_content), encoding="utf-8")
+
 
 
 _JOURNAL_HEAD_RE = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")

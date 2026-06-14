@@ -35,6 +35,17 @@ class BrainInitRequest(BaseModel):
     name: str
 
 
+class EditCalendarEventRequest(BaseModel):
+    ts: str
+    text: str
+    new_text: str
+
+
+class DeleteCalendarEventRequest(BaseModel):
+    ts: str
+    text: str
+
+
 def _resolve_mode(mode: str = None) -> str:
     """Use the provided mode or fall back to the manager's active mode."""
     return mode if mode else manager.active_mode
@@ -184,6 +195,36 @@ async def get_calendar(mode: str = Query(default=None)):
     return {"events": storage_brain.parse_calendar(_resolve_mode(mode))}
 
 
+@router.post("/api/brain/calendar/edit")
+async def edit_calendar_event(
+    req: EditCalendarEventRequest,
+    mode: str = Query(default=None),
+):
+    resolved_mode = _resolve_mode(mode)
+    try:
+        storage_brain.edit_calendar_event(resolved_mode, req.ts, req.text, req.new_text)
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/brain/calendar/delete")
+async def delete_calendar_event(
+    req: DeleteCalendarEventRequest,
+    mode: str = Query(default=None),
+):
+    resolved_mode = _resolve_mode(mode)
+    try:
+        storage_brain.delete_calendar_event(resolved_mode, req.ts, req.text)
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/brain/journal")
 async def get_journal(mode: str = Query(default=None)):
     """The Journal entity parsed into day sections (newest first)."""
@@ -234,12 +275,14 @@ async def get_graph(mode: str = Query(default=None)):
                     "status": fm.get("status", ""),
                     "tags": _parse_tags(fm.get("tags", "")),
                     "relationship": fm.get("relationship", ""),
+                    "icon": fm.get("icon", ""),
                 }
             except Exception:
                 nodes_data[stem] = {
                     "title": "", "description": "", "connections": [],
                     "created": "", "updated": "", "type": "leaf",
                     "status": "", "tags": [], "relationship": "",
+                    "icon": "",
                 }
 
         degrees = {stem: 0 for stem in stems}
@@ -264,6 +307,7 @@ async def get_graph(mode: str = Query(default=None)):
                 "created": data["created"],
                 "updated": data["updated"],
                 "event_count": event_counts.get(stem, 0),
+                "icon": data.get("icon", ""),
             })
 
     return {"nodes": nodes, "links": links, "processing": storage_brain.is_processing()}
@@ -294,5 +338,26 @@ async def reset_brain(
         return {"status": "ok"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/api/profile/{profile_name}")
+async def delete_profile(profile_name: str):
+    import re
+    import shutil
+    from .. import config
+    
+    clean = re.sub(r"[^a-zA-Z0-9_\-]", "", profile_name)
+    if not clean or clean == "default":
+        raise HTTPException(status_code=400, detail="Cannot delete default profile")
+    
+    profile_dir = config.PROJECT_ROOT / "profiles" / clean
+    if not profile_dir.exists():
+        raise HTTPException(status_code=404, detail="Profile not found")
+        
+    try:
+        shutil.rmtree(profile_dir)
+        return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
