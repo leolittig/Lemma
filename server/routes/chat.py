@@ -729,8 +729,12 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
             daemon=True,
         ).start()
 
-    # Update the conversation title if needed
+    # Update the conversation title if needed in a background thread so the response isn't held open
     try:
-        await asyncio.to_thread(_run_title_generation, cid)
+        threading.Thread(
+            target=_run_title_generation,
+            args=(cid,),
+            daemon=True,
+        ).start()
     except Exception as e:
-        print(f"Error calling title generation thread: {e}")
+        print(f"Error starting title generation thread: {e}")

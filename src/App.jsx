@@ -60,6 +60,7 @@ export default function App() {
   const [showBrainExplorer, setShowBrainExplorer] = useState(false);
   // null = unknown/loading, true/false = whether the root node is set up.
   const [brainInitialized, setBrainInitialized] = useState(null);
+  const [userName, setUserName] = useState('');
 
   const [profiles, setProfiles] = useState(() => {
     try {
@@ -140,13 +141,17 @@ export default function App() {
           if (cancelled) return;
           if (s.initialized) {
             setBrainInitialized(true);
+            setUserName(s.user_name || '');
           } else {
             // Auto-initialize if it is a custom profile with a valid name and already named by the user
             if (activeProfileObj && activeProfileObj.name && activeProfileObj.name !== 'Default' && activeProfileObj.id !== 'default' && activeProfileObj.customNamed) {
               console.log(`Auto-initializing brain for profile: ${activeProfileObj.name}`);
               api.initBrain(BRAIN_MODE, activeProfileObj.name)
                 .then(() => {
-                  if (!cancelled) setBrainInitialized(true);
+                  if (!cancelled) {
+                    setBrainInitialized(true);
+                    setUserName(activeProfileObj.name);
+                  }
                 })
                 .catch((err) => {
                   console.error('Failed to auto-initialize brain:', err);
@@ -210,6 +215,18 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }} aria-hidden="true">
+        <defs>
+          <filter id="make-white-transparent">
+            <feColorMatrix type="matrix" values="
+              0 0 0 0 0
+              0 0 0 0 0
+              0 0 0 0 0
+             -1 0 0 1 0
+            " />
+          </filter>
+        </defs>
+      </svg>
       <TopBar
         sidebarCollapsed={settings.sidebarCollapsed}
         onToggleSidebar={() => settings.setSidebarCollapsed((v) => !v)}
@@ -267,6 +284,7 @@ export default function App() {
                 registerMessageRef={registerMessageRef}
                 scroll={scroll}
                 onThinkingOpened={scroll.releaseLock}
+                userName={userName || (activeProfileObj.name !== 'Default' ? activeProfileObj.name : '')}
               />
               <Composer
                 inputText={chat.inputText}
@@ -308,6 +326,7 @@ export default function App() {
             setProfiles(updated);
             localStorage.setItem('profiles_list', JSON.stringify(updated));
             setBrainInitialized(true);
+            setUserName(name);
           }}
         />
       )}

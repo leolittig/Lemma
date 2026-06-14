@@ -4,6 +4,7 @@
 
 import React, { useEffect } from 'react';
 import MessageBubble from './MessageBubble';
+import tailWiggleGif from '../assets/tail_wiggle.gif';
 
 export default function MessageList({
   history,
@@ -13,6 +14,7 @@ export default function MessageList({
   registerMessageRef,
   scroll,           // from useAutoScroll: containerRef + event handlers
   onThinkingOpened,
+  userName,
 }) {
   // Measure the OS scrollbar width once and expose it as a CSS variable, so the
   // bottom fade overlay can inset its right edge to avoid painting over the
@@ -26,6 +28,9 @@ export default function MessageList({
     document.documentElement.style.setProperty('--scrollbar-width', `${width}px`);
   }, []);
 
+  const lastAssistantIndex = [...history].reverse().findIndex((msg) => msg.role === 'assistant');
+  const lastAssistantMsgIndex = lastAssistantIndex !== -1 ? history.length - 1 - lastAssistantIndex : -1;
+
   return (
     <div className="messages-area">
       <div
@@ -34,26 +39,40 @@ export default function MessageList({
         onScroll={scroll.onScroll}
         onWheel={scroll.onWheel}
         onTouchMove={scroll.onTouchMove}
+        style={history.length === 0 ? { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' } : {}}
       >
-        {history.map((msg, index) => {
-          const isLast = index === history.length - 1;
-          // Messages that fell into a gap between the kept context bands are
-          // out of context: their bubble is tinted and their words dimmed.
-          const fullyOut = !!(outOfContext &&
-            outOfContext.ranges.some(([s, e]) => index >= s && index < e));
-          return (
-            <MessageBubble
-              key={index}
-              message={msg}
-              index={index}
-              isStreaming={isLast && msg.role === 'assistant' && isResponding}
-              animate={index >= animateFromIndex}
-              fullyOut={fullyOut}
-              registerRef={registerMessageRef}
-              onThinkingOpened={onThinkingOpened}
-            />
-          );
-        })}
+        {history.length === 0 ? (
+          <div className="empty-chat-container">
+            <div className="empty-chat-indicator-container">
+              <img src={tailWiggleGif} className="empty-chat-indicator" alt="Welcome" />
+            </div>
+            <h1 className="empty-chat-title">
+              Hello {userName || 'user'}, how can I help you today?
+            </h1>
+          </div>
+        ) : (
+          history.map((msg, index) => {
+            const isLast = index === history.length - 1;
+            // Messages that fell into a gap between the kept context bands are
+            // out of context: their bubble is tinted and their words dimmed.
+            const fullyOut = !!(outOfContext &&
+              outOfContext.ranges.some(([s, e]) => index >= s && index < e));
+            return (
+              <MessageBubble
+                key={index}
+                message={msg}
+                index={index}
+                isStreaming={isLast && msg.role === 'assistant' && isResponding}
+                isLastAssistant={index === lastAssistantMsgIndex}
+                isResponding={isResponding}
+                animate={index >= animateFromIndex}
+                fullyOut={fullyOut}
+                registerRef={registerMessageRef}
+                onThinkingOpened={onThinkingOpened}
+              />
+            );
+          })
+        )}
         <div />
       </div>
       <div className="messages-fade" aria-hidden="true" />

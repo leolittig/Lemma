@@ -3,6 +3,7 @@
 
 import React from 'react';
 import ModelPicker from './ModelPicker';
+import lemmaLogo from '../assets/LemmaLogo.png';
 
 export default function TopBar({
   sidebarCollapsed,
@@ -40,7 +41,7 @@ export default function TopBar({
           </svg>
           <span className="topbar-new-label">New chat</span>
         </button>
-        <span className="topbar-app-title">LEMMA</span>
+        <img src={lemmaLogo} className="topbar-logo" alt="LEMMA" />
       </div>
       <ModelPicker {...modelPickerProps} />
       {onToggleBrainExplorer && (

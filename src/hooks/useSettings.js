@@ -39,7 +39,7 @@ export function useSettings() {
 
   // Whether the model's reasoning phase is enabled (sent as enable_thinking).
   const [thinkingEnabled, setThinkingEnabled] = usePersistentState(
-    'thinking_enabled', loadBool(true), saveBool);
+    'thinking_enabled', loadBool(false), saveBool);
 
   // Smart context window: head/middle/tail bands when on, a plain recency cut
   // (keep the most recent messages that fit) when off.

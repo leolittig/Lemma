@@ -421,3 +421,102 @@
   opacity: 0.7;
   transition: opacity 0.5s ease;
 }
+
+/* Assistant indicator layout classes */
+.assistant-layout-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 12px;
+  max-width: 100%;
+}
+
+.assistant-layout-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: calc(100% - 92px); /* 80px width + 12px gap */
+}
+
+.assistant-indicator-container {
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 2px; /* align beautifully with bubble bottom */
+  overflow: hidden; /* Crop edge artifacts */
+  border-radius: 4px;
+}
+
+.assistant-indicator-gif,
+.assistant-indicator-static {
+  width: 106%;
+  height: 106%;
+  margin-top: 1.5rem;
+  margin-left: 1rem;
+  object-fit: contain;
+  filter: url(#make-white-transparent); /* Remove white background using SVG color matrix */
+}
+
+/* Empty Chat Welcome State styles */
+.empty-chat-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  max-width: 100% !important;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2rem;
+  animation: fadeInEmptyChat 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.empty-chat-indicator-container {
+  width: 160px;
+  height: 160px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden; /* Crop edge artifacts */
+  border-radius: 8px;
+  background: transparent;
+}
+
+.empty-chat-indicator {
+  width: 106%;
+  height: 106%;
+  margin: -3%;
+  object-fit: contain;
+  filter: url(#make-white-transparent); /* Remove white background using SVG color matrix */
+}
+
+.empty-chat-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #1e293b85;
+  margin-top: 1.5rem;
+  margin-bottom: 0;
+  letter-spacing: -0.025em;
+  opacity: 0.9;
+}
+
+@keyframes fadeInEmptyChat {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

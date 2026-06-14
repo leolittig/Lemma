@@ -45,6 +45,12 @@ export function useChat({ conversations, settings, attachments, scroll }) {
     scroll.lockToBottom();
     setIsResponding(true);
 
+    // Add a placeholder assistant message immediately, so the bubble (and the GIF indicator) shows up during processing/thinking
+    const assistantMessage = (replySoFar, brainActivity = null) => ({
+      role: 'assistant', text: replySoFar, attachments: [], brain_activity: brainActivity,
+    });
+    conversations.setHistory((prev) => [...prev, assistantMessage('')]);
+
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -63,15 +69,11 @@ export function useChat({ conversations, settings, attachments, scroll }) {
       conversations.setOutOfContext(parseTrimmedRanges(res));
       const brainActivity = parseBrainActivity(res);
 
-      // Add a placeholder assistant message, then fill it as chunks stream in.
-      const assistantMessage = (replySoFar) => ({
-        role: 'assistant', text: replySoFar, attachments: [], brain_activity: brainActivity,
-      });
-      conversations.setHistory((prev) => [...prev, assistantMessage('')]);
+      // Stream the response, updating the placeholder
       await streamInto(res, (replySoFar) => {
         conversations.setHistory((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = assistantMessage(replySoFar);
+          updated[updated.length - 1] = assistantMessage(replySoFar, brainActivity);
           return updated;
         });
       });
@@ -80,6 +82,16 @@ export function useChat({ conversations, settings, attachments, scroll }) {
       if (error.name !== 'AbortError') {
         console.error('Error fetching chat response:', error);
       }
+      // Clean up empty assistant placeholder if no content was received
+      conversations.setHistory((prev) => {
+        if (prev.length > 0) {
+          const last = prev[prev.length - 1];
+          if (last.role === 'assistant' && !last.text && !last.brain_activity) {
+            return prev.slice(0, -1);
+          }
+        }
+        return prev;
+      });
     } finally {
       abortRef.current = null;
       setIsResponding(false);

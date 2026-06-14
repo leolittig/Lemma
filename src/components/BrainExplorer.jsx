@@ -113,7 +113,7 @@ function getArcPath(l, bend = 0.22) {
 // Build the laid-out graph: BFS depth from the root drives the radial layout;
 // the depth-1 branch a node descends from is its cluster (→ hue); the node's
 // type drives its icon.
-function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 200) {
+function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 270) {
   const rawNodes = graphData.nodes || [];
   const rawLinks = graphData.links || [];
   const ids = new Set(rawNodes.map((n) => n.id));
@@ -424,7 +424,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
 
   const nodeSizeMult = 1.2;
-  const edgeLength = 200;
+  const edgeLength = 270;
 
   const selectedRef = useRef(selected);
   const serverContentRef = useRef('');

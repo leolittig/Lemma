@@ -7,17 +7,40 @@
 //   completed  -> BubbleText (marked.parse into HTML), which can also dim
 //                 words that fell out of the model's context window.
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { marked, renderTokens } from '../lib/markdown';
 import { parseThinking } from '../lib/thinking';
 import BubbleText from './BubbleText';
 import ThinkingBlock from './ThinkingBlock';
 import BrainActivityBlock from './BrainActivityBlock';
+import tailWiggleGif from '../assets/tail_wiggle.gif';
+
+function StaticGif({ src, className, style, alt }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.naturalWidth || 100;
+      canvas.height = img.naturalHeight || 100;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+    };
+  }, [src]);
+
+  return <canvas ref={canvasRef} className={className} style={style} aria-label={alt} />;
+}
 
 export default function MessageBubble({
   message,
   index,
   isStreaming,
+  isLastAssistant,
+  isResponding,
   animate,        // false for history loaded from the server (no fly-in)
   fullyOut,       // true when this message fell out of the model's context
   registerRef,    // from useMessageFlip, for the slide-up reflow animation
@@ -74,17 +97,55 @@ export default function MessageBubble({
     <BrainActivityBlock activity={message.brain_activity} />
   ) : null;
 
+  if (message.role !== 'assistant') {
+    return (
+      <div ref={registerRef(index)} className={cls} style={inlineStyle}>
+        {brainActivityBlock}
+        {thinkingBlock}
+        {hasContent ? (
+          <div className="message-bubble">
+            {attBlock}
+            {textBlock}
+            {animate && <span className="bubble-shine" aria-hidden="true" />}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div ref={registerRef(index)} className={cls} style={inlineStyle}>
-      {brainActivityBlock}
-      {thinkingBlock}
-      {hasContent ? (
-        <div className="message-bubble">
-          {attBlock}
-          {textBlock}
-          {animate && <span className="bubble-shine" aria-hidden="true" />}
+      <div className="assistant-layout-row">
+        <div className="assistant-indicator-container">
+          {isLastAssistant && (
+            <>
+              <img
+                src={tailWiggleGif}
+                className="assistant-indicator-gif"
+                style={{ display: isResponding ? 'block' : 'none' }}
+                alt="Wiggling..."
+              />
+              <StaticGif
+                src={tailWiggleGif}
+                className="assistant-indicator-static"
+                style={{ display: isResponding ? 'none' : 'block' }}
+                alt="Stopped..."
+              />
+            </>
+          )}
         </div>
-      ) : null}
+        <div className="assistant-layout-column">
+          {brainActivityBlock}
+          {thinkingBlock}
+          {hasContent ? (
+            <div className="message-bubble">
+              {attBlock}
+              {textBlock}
+              {animate && <span className="bubble-shine" aria-hidden="true" />}
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
