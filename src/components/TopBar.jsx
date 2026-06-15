@@ -2,6 +2,7 @@
 // and the settings gear on the right.
 
 import React from 'react';
+import { Brain } from 'lucide-react';
 import lemmaLogo from '../assets/LemmaLogo.png';
 
 export default function TopBar({
@@ -65,7 +66,7 @@ export default function TopBar({
             aria-label={showBrainExplorer ? 'Close brain explorer' : 'Open brain explorer'}
             title="Brain Explorer"
           >
-            Brain
+            <Brain size={18} strokeWidth={2} />
           </button>
         </div>
       )}
