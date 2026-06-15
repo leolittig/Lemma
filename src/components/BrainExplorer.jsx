@@ -422,8 +422,19 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const [nodeRefs, setNodeRefs] = useState(null);
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
 
-  const nodeSizeMult = 1.2;
-  const edgeLength = 270;
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const nodeSizeMult = isMobile ? 0.95 : 1.2;
+  const edgeLength = isMobile ? 150 : 270;
+
 
   const selectedRef = useRef(selected);
   const serverContentRef = useRef('');
@@ -593,7 +604,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       api.fetchBrainGraph(brainMode)
         .then((data) => {
           setSim((currSim) => {
-            if (!currSim) return settle(initSimulation(data));
+            if (!currSim) return settle(initSimulation(data, nodeSizeMult, edgeLength));
 
             const sig = (n) => `${n.id}:${n.type}`;
             const currNodeIds = currSim.nodes.map(sig).sort().join(',');
@@ -689,7 +700,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       const data = await api.fetchBrainGraph(brainMode);
       const updatedNode = data.nodes.find((n) => n.id === selected.id);
       setSelected({ id: selected.id, label: selected.label, updated: updatedNode ? updatedNode.updated : selected.updated });
-      setSim(() => settle(initSimulation(data)));
+      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
       simAlpha.current = 1.0;
       setEditorTab('preview');
     } catch (err) {
@@ -698,7 +709,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     } finally {
       setSaving(false);
     }
-  }, [brainMode, selected, editorContent, setEditorTab]);
+  }, [brainMode, selected, editorContent, setEditorTab, nodeSizeMult, edgeLength]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -707,12 +718,12 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       await api.deleteBrainFile(brainMode, selected.id);
       setSelected(null);
       const data = await api.fetchBrainGraph(brainMode);
-      setSim(() => settle(initSimulation(data)));
+      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
       simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain file delete failed:', err);
     }
-  }, [brainMode, selected]);
+  }, [brainMode, selected, nodeSizeMult, edgeLength]);
 
   const handleRenameSave = useCallback(async () => {
     if (!selected || !newName.trim()) return;
@@ -725,7 +736,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       const data = await api.fetchBrainGraph(brainMode);
       const updatedNode = data.nodes.find((n) => n.id === cleanName);
       setSelected({ id: cleanName, label: cleanName, updated: updatedNode ? updatedNode.updated : '' });
-      setSim(() => settle(initSimulation(data)));
+      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
       simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain file rename failed:', err);
@@ -733,7 +744,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     } finally {
       setSaving(false);
     }
-  }, [brainMode, selected, newName]);
+  }, [brainMode, selected, newName, nodeSizeMult, edgeLength]);
 
   const handleResetBrain = useCallback(async () => {
     if (!window.confirm('Reset the entire brain? This erases all nodes and starts fresh (you\'ll be asked for your name again).')) return;

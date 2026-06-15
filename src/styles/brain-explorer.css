@@ -1921,3 +1921,71 @@ button.brain-zoom-reset-btn:active {
   }
 }
 
+@media (max-width: 768px) {
+  /* Stack Close button and Tab Bar vertically at the top of Brain Explorer */
+  button.brain-explorer-close {
+    top: 0.5rem !important;
+    left: 1rem !important;
+    padding: 0.4rem 0.8rem !important;
+  }
+
+  .brain-view-tabs {
+    top: 3.25rem !important;
+    left: 0 !important;
+    transform: none !important;
+    width: 100vw !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    padding: 0.25rem 0.75rem !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
+    scrollbar-width: none !important; /* Firefox */
+  }
+
+  .brain-view-tabs::-webkit-scrollbar {
+    display: none !important; /* Chrome/Safari */
+  }
+
+  button.brain-view-tab {
+    flex-shrink: 0 !important;
+  }
+
+  /* Ensure all views clear the stacked headers */
+  .brain-view-pane {
+    padding-top: 6.5rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .brain-calendar-container {
+    padding-top: 6.5rem !important;
+    margin-top: 0 !important;
+    height: 100% !important;
+  }
+
+  /* Make Editor slide-in cover the whole screen */
+  .brain-editor-pane {
+    width: 100vw !important;
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 50 !important;
+  }
+
+  .brain-editor-resizer {
+    display: none !important;
+  }
+
+  /* Stack task columns vertically on mobile */
+  .brain-task-columns {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+}
+
+

@@ -251,3 +251,15 @@ button.settings-action-btn.danger-text:hover {
 button.settings-action-btn.danger-text:active {
   transform: translateY(1px) scale(0.98) !important;
 }
+
+@media (max-width: 768px) {
+  .settings-modal {
+    max-height: 90vh !important;
+  }
+
+  .settings-body {
+    overflow-y: auto !important;
+    max-height: calc(90vh - 4.5rem) !important;
+  }
+}
+

@@ -265,6 +265,9 @@ export default function App() {
           onCreateProfile={handleCreateProfile}
           onDeleteProfile={handleDeleteProfile}
         />
+        {!settings.sidebarCollapsed && (
+          <div className="sidebar-backdrop" onClick={() => settings.setSidebarCollapsed(true)} />
+        )}
         <div className="app-container">
           {showBrainExplorer ? (
             <BrainExplorer

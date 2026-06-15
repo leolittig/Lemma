@@ -451,3 +451,18 @@ button.sidebar-profile-create-btn {
 button.sidebar-profile-create-btn:hover {
   background-color: rgba(0, 122, 255, 0.12);
 }
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 280px !important;
+    max-width: 85vw !important;
+    background: #fafafc !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.05) !important;
+    z-index: 17 !important;
+  }
+
+  .sidebar-list {
+    padding-right: 1.5rem !important;
+  }
+}

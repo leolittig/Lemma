@@ -27,3 +27,28 @@
   background-color: #f8f9fa;
   position: relative;
 }
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar-backdrop {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 15;
+    animation: sidebarBackdropFadeIn 0.3s ease-out;
+  }
+}
+
+@keyframes sidebarBackdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
