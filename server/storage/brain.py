@@ -55,6 +55,30 @@ def _push_event(etype: str, text: str):
         del _activity_events[:overflow]
 
 
+_change_listeners = []
+
+
+def register_listener(callback):
+    """Register a callback for brain changes: callback(event_type, data)."""
+    _change_listeners.append(callback)
+
+
+def unregister_listener(callback):
+    """Unregister a callback."""
+    try:
+        _change_listeners.remove(callback)
+    except ValueError:
+        pass
+
+
+def _notify_change(event_type: str, data: dict = None):
+    for cb in list(_change_listeners):
+        try:
+            cb(event_type, data)
+        except Exception as e:
+            print(f"Error calling brain listener: {e}")
+
+
 def begin_processing():
     """Mark that a background brain update has started and reset the live stream."""
     global _processing_count, _activity_stream
@@ -62,6 +86,7 @@ def begin_processing():
         _processing_count += 1
         _activity_stream = ""
         _push_event("status", "Reviewing the conversation for things to remember…")
+    _notify_change("activity", get_activity())
 
 
 def end_processing():
@@ -69,12 +94,15 @@ def end_processing():
     global _processing_count
     with _activity_lock:
         _processing_count = max(0, _processing_count - 1)
+    _notify_change("activity", get_activity())
+    _notify_change("graph_changed")
 
 
 def log_activity(etype: str, text: str):
     """Record a discrete activity line (status / write / delete / error)."""
     with _activity_lock:
         _push_event(etype, text)
+    _notify_change("activity", get_activity())
 
 
 def append_stream(text: str):
@@ -82,6 +110,7 @@ def append_stream(text: str):
     global _activity_stream
     with _activity_lock:
         _activity_stream += text
+    _notify_change("activity", get_activity())
 
 
 def is_processing() -> bool:
@@ -421,6 +450,7 @@ def save_markdown_node(mode: str, filename: str, content: str):
     target_path = (brain_dir / filename).resolve()
     
     target_path.write_text(content, encoding="utf-8")
+    _notify_change("graph_changed")
 
 
 def rename_markdown_node(mode: str, old_filename: str, new_filename: str):
@@ -496,6 +526,7 @@ def rename_markdown_node(mode: str, old_filename: str, new_filename: str):
 
     # 3. Rebuild map
     rebuild_map(brain_dir)
+    _notify_change("graph_changed")
 
 
 # --- Off-grid entities: helpers, Calendar, Journal, references ----------------

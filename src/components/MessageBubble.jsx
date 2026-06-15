@@ -124,6 +124,7 @@ export default function MessageBubble({
                 className="assistant-indicator-gif"
                 style={{ display: isResponding ? 'block' : 'none' }}
                 alt="Wiggling..."
+                draggable="false"
               />
               <StaticGif
                 src={tailWiggleGif}

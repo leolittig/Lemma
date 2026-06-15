@@ -218,7 +218,7 @@ function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 270) {
       const share = (subtreeSize[childId] / totalSize) * angularSpan;
       const childAngle = currentAngle + share / 2;
       const parentPos = pos[nodeId];
-      const baseLen = depthVal === 1 ? edgeLength : 110;
+      const baseLen = depthVal === 1 ? edgeLength * 1.45 : 110;
       const len = baseLen + (depthVal > 1 && sortedChildren.length > 3 ? (idx % 2) * 20 : 0);
 
       pos[childId] = {
@@ -267,7 +267,7 @@ function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 270) {
   const nodes = rawNodes.map((n) => {
     const isRoot = n.id === ROOT_ID;
     const deg = degree[n.id] || 0;
-    const radius = (isRoot ? 26
+    const radius = (isRoot ? 45
       : depth[n.id] === 1 ? 16 + Math.min(deg, 8) * 1.5
         : 9 + Math.min(deg, 6) * 1.2) * nodeSizeMult;
     return {
@@ -413,7 +413,6 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [editorContent, setEditorContent] = useState('');
   const [editorTab, setEditorTab] = useState('preview');
   const [paneWidth, setPaneWidth] = useState(480);
@@ -423,8 +422,19 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const [nodeRefs, setNodeRefs] = useState(null);
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
 
-  const nodeSizeMult = 1.2;
-  const edgeLength = 270;
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const nodeSizeMult = isMobile ? 0.95 : 1.2;
+  const edgeLength = isMobile ? 150 : 270;
+
 
   const selectedRef = useRef(selected);
   const serverContentRef = useRef('');
@@ -545,6 +555,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const panRef = useRef({ x: 0, y: 0, zoom: 1 });
   const panDragRef = useRef(null);
   const dragRef = useRef(null);
+  const touchRef = useRef(null); // tracks touch gesture state for pinch-to-zoom and pan
   const simAlpha = useRef(1.0);
   const [, forceRender] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
@@ -588,13 +599,13 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     return () => { cancelled = true; };
   }, [brainMode, reloadKey]);
 
-  // Poll graph data so background memory commits show up live.
+  // Sync graph data when the graph changes.
   useEffect(() => {
-    const timer = setInterval(() => {
+    const syncGraph = () => {
       api.fetchBrainGraph(brainMode)
         .then((data) => {
           setSim((currSim) => {
-            if (!currSim) return settle(initSimulation(data));
+            if (!currSim) return settle(initSimulation(data, nodeSizeMult, edgeLength));
 
             const sig = (n) => `${n.id}:${n.type}`;
             const currNodeIds = currSim.nodes.map(sig).sort().join(',');
@@ -631,7 +642,12 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
           });
         })
         .catch((err) => console.error('Real-time background graph sync failed:', err));
-    }, 2500);
+    };
+
+    window.addEventListener('brain-graph-changed', syncGraph);
+    return () => {
+      window.removeEventListener('brain-graph-changed', syncGraph);
+    };
 
     function syncOpenNode(data, structureChanged) {
       const cur = selectedRef.current;
@@ -649,21 +665,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
           .catch((err) => console.error('Failed to sync open brain file:', err));
       }
     }
-    return () => clearInterval(timer);
-  }, [brainMode]);
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const data = await api.fetchBrainGraph(brainMode);
-      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
-      simAlpha.current = 1.0;
-    } catch (err) {
-      console.error('Brain graph refresh failed:', err);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [brainMode]);
+  }, [brainMode, nodeSizeMult, edgeLength]);
 
   const selectNodeById = useCallback(async (id, label, updated) => {
     setView('graph');
@@ -699,15 +701,16 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       const data = await api.fetchBrainGraph(brainMode);
       const updatedNode = data.nodes.find((n) => n.id === selected.id);
       setSelected({ id: selected.id, label: selected.label, updated: updatedNode ? updatedNode.updated : selected.updated });
-      setSim(() => settle(initSimulation(data)));
+      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
       simAlpha.current = 1.0;
+      setEditorTab('preview');
     } catch (err) {
       console.error('Brain file save failed:', err);
       alert('Save failed. Keep the --- frontmatter (created/updated/type) and balanced [[links]].');
     } finally {
       setSaving(false);
     }
-  }, [brainMode, selected, editorContent]);
+  }, [brainMode, selected, editorContent, setEditorTab, nodeSizeMult, edgeLength]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -716,12 +719,12 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       await api.deleteBrainFile(brainMode, selected.id);
       setSelected(null);
       const data = await api.fetchBrainGraph(brainMode);
-      setSim(() => settle(initSimulation(data)));
+      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
       simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain file delete failed:', err);
     }
-  }, [brainMode, selected]);
+  }, [brainMode, selected, nodeSizeMult, edgeLength]);
 
   const handleRenameSave = useCallback(async () => {
     if (!selected || !newName.trim()) return;
@@ -734,7 +737,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       const data = await api.fetchBrainGraph(brainMode);
       const updatedNode = data.nodes.find((n) => n.id === cleanName);
       setSelected({ id: cleanName, label: cleanName, updated: updatedNode ? updatedNode.updated : '' });
-      setSim(() => settle(initSimulation(data)));
+      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
       simAlpha.current = 1.0;
     } catch (err) {
       console.error('Brain file rename failed:', err);
@@ -742,7 +745,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     } finally {
       setSaving(false);
     }
-  }, [brainMode, selected, newName]);
+  }, [brainMode, selected, newName, nodeSizeMult, edgeLength]);
 
   const handleResetBrain = useCallback(async () => {
     if (!window.confirm('Reset the entire brain? This erases all nodes and starts fresh (you\'ll be asked for your name again).')) return;
@@ -802,6 +805,59 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     forceRender((v) => v + 1);
   }, []);
 
+  // Touch handlers for mobile pan and pinch-to-zoom
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      touchRef.current = {
+        type: 'pinch',
+        startDist: dist,
+        startZoom: panRef.current.zoom,
+        startCX: cx,
+        startCY: cy,
+        origPanX: panRef.current.x,
+        origPanY: panRef.current.y,
+      };
+    } else if (e.touches.length === 1) {
+      touchRef.current = {
+        type: 'pan',
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        origPanX: panRef.current.x,
+        origPanY: panRef.current.y,
+      };
+      setSelected(null);
+    }
+  }, [setSelected]);
+  const handleTouchMove = useCallback((e) => {
+    if (!touchRef.current) return;
+    if (touchRef.current.type === 'pinch' && e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / touchRef.current.startDist;
+      panRef.current.zoom = Math.max(0.2, Math.min(4, touchRef.current.startZoom * scale));
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      panRef.current.x = touchRef.current.origPanX + (cx - touchRef.current.startCX);
+      panRef.current.y = touchRef.current.origPanY + (cy - touchRef.current.startCY);
+      forceRender((v) => v + 1);
+    } else if (touchRef.current.type === 'pan' && e.touches.length === 1) {
+      panRef.current.x = touchRef.current.origPanX + (e.touches[0].clientX - touchRef.current.startX);
+      panRef.current.y = touchRef.current.origPanY + (e.touches[0].clientY - touchRef.current.startY);
+      forceRender((v) => v + 1);
+    }
+  }, []);
+  const handleTouchEnd = useCallback(() => {
+    touchRef.current = null;
+  }, []);
+
   const closeButton = (
     <button id="brain-explorer-close" className="brain-explorer-close" onClick={onClose} aria-label="Close brain explorer">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -813,6 +869,16 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
 
   const tabBar = (
     <div className="brain-view-tabs">
+      <button
+        className="brain-view-tab brain-explorer-close-tab"
+        onClick={onClose}
+        aria-label="Back to chat"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.3rem', display: 'inline-block', verticalAlign: 'middle', position: 'relative', top: '-1px' }}>
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        <span>Back to chat</span>
+      </button>
       {VIEWS.map((v) => (
         <button
           key={v.key}
@@ -901,17 +967,6 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       {closeButton}
       {tabBar}
 
-      <div className="brain-explorer-toolbar" style={{ right: `${rightOffset}px` }}>
-
-        <button id="brain-refresh-btn" className="brain-refresh-btn" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh brain view" title="Refresh brain view">
-          <svg className={`brain-refresh-icon${refreshing ? ' spinning' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="23 4 23 10 17 10" />
-            <polyline points="1 20 1 14 7 14" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-          <span className="brain-refresh-label">Refresh</span>
-        </button>
-      </div>
 
       <div className={`brain-explorer-body ${selected ? 'split' : ''}`}>
         <svg
@@ -923,6 +978,11 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          style={{ touchAction: 'none' }}
         >
           <defs>
             <filter id="node-glow">
@@ -1111,7 +1171,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
         )}
       </div>
 
-      <div className="brain-zoom-controls" style={{ right: `${rightOffset}px` }}>
+      <div className="brain-zoom-controls">
         <button
           className="brain-zoom-btn"
           onClick={() => {

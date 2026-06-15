@@ -9,6 +9,7 @@ import React, { useRef, useEffect } from 'react';
 import Modal from './Modal';
 import * as api from '../api/client';
 import ToggleSwitch from './ToggleSwitch';
+import ModelPicker from './ModelPicker';
 import { adjustTextareaHeight } from '../lib/textarea';
 import {
   CTX_STEPS, CTX_DEFAULT_INDEX,
@@ -54,7 +55,7 @@ const stepIndex = (steps, savedValue, defaultIndex) => {
   return i === -1 ? defaultIndex : i;
 };
 
-export default function SettingsModal({ open, onClose, settings, onReloadModel, onReset }) {
+export default function SettingsModal({ open, onClose, settings, onReloadModel, onReset, modelPickerProps, onRefreshModels }) {
   const {
     systemPrompt, setSystemPrompt,
     temperature, setTemperature,
@@ -63,6 +64,7 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel, 
     smartContext, setSmartContext,
     brainEnabled, setBrainEnabled,
     detailedLogs, setDetailedLogs,
+    thinkingEnabled, setThinkingEnabled,
   } = settings;
 
   // Keep the instructions textarea sized to its content, also right after the
@@ -73,6 +75,13 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel, 
     const timer = setTimeout(() => adjustTextareaHeight(textareaRef.current), 50);
     return () => clearTimeout(timer);
   }, [systemPrompt, open]);
+
+  // Refresh available models when settings modal opens
+  useEffect(() => {
+    if (open && onRefreshModels) {
+      onRefreshModels();
+    }
+  }, [open, onRefreshModels]);
 
   const ctxIndex = stepIndex(CTX_STEPS, contextSize, CTX_DEFAULT_INDEX);
   const maxTokensIndex = stepIndex(MAX_TOKENS_STEPS, maxTokens, MAX_TOKENS_DEFAULT_INDEX);
@@ -95,6 +104,21 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel, 
     <Modal title="Settings" open={open} onClose={onClose}>
       <div className="settings-body">
         <div className="settings-field">
+          <label className="settings-label">Model</label>
+          <ModelPicker {...modelPickerProps} />
+        </div>
+        <div className="settings-field">
+          <div className="settings-toggle-row">
+            <label className="settings-label">Enable thinking (when supported)</label>
+            <ToggleSwitch
+              on={thinkingEnabled}
+              onToggle={() => setThinkingEnabled((v) => !v)}
+              label="Enable thinking (when supported)"
+            />
+          </div>
+        </div>
+        <div className="settings-section-divider" />
+        <div className="settings-field">
           <label className="settings-label">Instructions</label>
           <textarea
             ref={textareaRef}
@@ -107,6 +131,7 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel, 
             rows={1}
           />
         </div>
+
         <SliderField
           label="Temperature"
           valueText={temperature.toFixed(2)}

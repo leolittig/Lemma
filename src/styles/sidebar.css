@@ -223,6 +223,18 @@ button.sidebar-item-btn:disabled {
   min-width: 0;
 }
 
+.sidebar-fade {
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5.7rem;
+  height: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(248, 249, 250, 0) 0%, #f8f9fa 100%);
+  z-index: 18;
+}
+
 /* Sidebar Profile Footer and Selector */
 .sidebar-footer {
   margin-top: auto;
@@ -450,4 +462,23 @@ button.sidebar-profile-create-btn {
 
 button.sidebar-profile-create-btn:hover {
   background-color: rgba(0, 122, 255, 0.12);
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 280px !important;
+    max-width: 85vw !important;
+    background: #fafafc !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.05) !important;
+    z-index: 17 !important;
+  }
+
+  .sidebar-list {
+    padding-right: 1.5rem !important;
+  }
+
+  .sidebar-fade {
+    background: linear-gradient(to bottom, rgba(250, 250, 252, 0) 0%, #fafafc 100%);
+  }
 }

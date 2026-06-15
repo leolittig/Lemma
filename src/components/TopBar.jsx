@@ -1,8 +1,8 @@
-// The app bar: sidebar toggle and New Chat on the left, the model picker in
-// the center, the settings gear on the right.
+// The app bar: sidebar toggle and New Chat on the left, the logo centered,
+// and the settings gear on the right.
 
 import React from 'react';
-import ModelPicker from './ModelPicker';
+import { Brain } from 'lucide-react';
 import lemmaLogo from '../assets/LemmaLogo.png';
 
 export default function TopBar({
@@ -13,7 +13,6 @@ export default function TopBar({
   onToggleBrainExplorer,
   showBrainExplorer,
   brainProcessing, // true while the memory model is updating the brain
-  modelPickerProps, // forwarded to ModelPicker (see App.jsx)
 }) {
   return (
     <header className="top-bar">
@@ -41,9 +40,9 @@ export default function TopBar({
           </svg>
           <span className="topbar-new-label">New chat</span>
         </button>
-        <img src={lemmaLogo} className="topbar-logo" alt="LEMMA" />
       </div>
-      <ModelPicker {...modelPickerProps} />
+      <img src={lemmaLogo} className="topbar-logo" alt="LEMMA" draggable="false" />
+
       {onToggleBrainExplorer && (
         <div className="brain-toolbar-cluster">
           {brainProcessing && (
@@ -67,7 +66,7 @@ export default function TopBar({
             aria-label={showBrainExplorer ? 'Close brain explorer' : 'Open brain explorer'}
             title="Brain Explorer"
           >
-            Brain
+            <Brain size={18} strokeWidth={2} />
           </button>
         </div>
       )}

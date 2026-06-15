@@ -44,7 +44,7 @@ export default function MessageList({
         {history.length === 0 ? (
           <div className="empty-chat-container">
             <div className="empty-chat-indicator-container">
-              <img src={tailWiggleGif} className="empty-chat-indicator" alt="Welcome" />
+              <img src={tailWiggleGif} className="empty-chat-indicator" alt="Welcome" draggable="false" />
             </div>
             <h1 className="empty-chat-title">
               Hello {userName || 'user'}, how can I help you today?

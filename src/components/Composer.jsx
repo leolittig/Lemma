@@ -3,7 +3,6 @@
 // All state lives in App (and the useAttachments hook); this only renders it.
 
 import React, { useRef, useEffect } from 'react';
-import ToggleSwitch from './ToggleSwitch';
 import { adjustTextareaHeight } from '../lib/textarea';
 
 export default function Composer({
@@ -12,9 +11,6 @@ export default function Composer({
   onSubmit,        // form submit handler (sends the message)
   onStop,          // aborts the in-flight response
   isResponding,
-  supportsThinking,
-  thinkingEnabled,
-  onToggleThinking,
   attachments,     // from useAttachments
 }) {
   const textareaRef = useRef(null);
@@ -69,17 +65,12 @@ export default function Composer({
           style={{ display: 'none' }}
           onChange={attachments.onFileSelect}
         />
-        {supportsThinking && (
-          <div className="thinking-toggle-container">
-            <span className="thinking-toggle-label">Thinking</span>
-            <ToggleSwitch on={thinkingEnabled} onToggle={onToggleThinking} label="thinking" />
-          </div>
-        )}
         <button type="button" className="attach-btn" onClick={attachments.openFilePicker} aria-label="Attach image or audio">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
           </svg>
         </button>
+
         <textarea
           ref={textareaRef}
           value={inputText}
