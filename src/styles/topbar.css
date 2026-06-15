@@ -209,16 +209,10 @@ button.settings-btn:active {
 
 @media (max-width: 768px) {
   .top-bar {
-    height: 6.5rem;
-    padding: 0.5rem 1rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    align-items: center;
+    padding: 0.75rem 1rem;
   }
 
   .topbar-left {
-    top: 0.5rem;
     left: 1rem;
     gap: 0.25rem;
   }
@@ -249,7 +243,6 @@ button.settings-btn:active {
   }
 
   .brain-toolbar-cluster {
-    top: 0.5rem;
     right: 3.5rem;
     gap: 0.25rem;
   }
@@ -261,10 +254,10 @@ button.settings-btn:active {
   }
 
   button.settings-btn {
-    top: 0.5rem;
     right: 1rem;
     width: 2.1rem !important;
     height: 2.1rem !important;
   }
 }
+
 

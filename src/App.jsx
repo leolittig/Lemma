@@ -235,21 +235,6 @@ export default function App() {
         onToggleBrainExplorer={settings.brainEnabled ? (() => setShowBrainExplorer((v) => !v)) : null}
         showBrainExplorer={showBrainExplorer && settings.brainEnabled}
         brainProcessing={brainActivity.processing}
-        modelPickerProps={{
-          open: showModelPicker,
-          onToggle: handleToggleModelPicker,
-          onClose: () => setShowModelPicker(false),
-          modelName: models.modelName,
-          availableModels: models.availableModels,
-          downloads: models.downloads,
-          isChangingModel: models.isChangingModel,
-          onSelectModel: handleSelectModel,
-          onDismissDownload: models.dismissDownload,
-          onAddModel: () => {
-            setShowModelPicker(false);
-            setShowAddModel(true);
-          },
-        }}
       />
       <div className="app-body">
         <Sidebar
@@ -295,9 +280,6 @@ export default function App() {
                 onSubmit={chat.send}
                 onStop={chat.stop}
                 isResponding={chat.isResponding}
-                supportsThinking={models.supportsThinking}
-                thinkingEnabled={settings.thinkingEnabled}
-                onToggleThinking={() => settings.setThinkingEnabled((v) => !v)}
                 attachments={attachments}
               />
             </>
@@ -310,6 +292,21 @@ export default function App() {
             onReset={() => {
               setBrainInitialized(false);
               setShowSettings(false);
+            }}
+            modelPickerProps={{
+              open: showModelPicker,
+              onToggle: handleToggleModelPicker,
+              onClose: () => setShowModelPicker(false),
+              modelName: models.modelName,
+              availableModels: models.availableModels,
+              downloads: models.downloads,
+              isChangingModel: models.isChangingModel,
+              onSelectModel: handleSelectModel,
+              onDismissDownload: models.dismissDownload,
+              onAddModel: () => {
+                setShowModelPicker(false);
+                setShowAddModel(true);
+              },
             }}
           />
           {models.isChangingModel && <ModelLoadingOverlay />}
