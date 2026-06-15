@@ -555,6 +555,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const panRef = useRef({ x: 0, y: 0, zoom: 1 });
   const panDragRef = useRef(null);
   const dragRef = useRef(null);
+  const touchRef = useRef(null); // tracks touch gesture state for pinch-to-zoom and pan
   const simAlpha = useRef(1.0);
   const [, forceRender] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
@@ -804,6 +805,59 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     forceRender((v) => v + 1);
   }, []);
 
+  // Touch handlers for mobile pan and pinch-to-zoom
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      touchRef.current = {
+        type: 'pinch',
+        startDist: dist,
+        startZoom: panRef.current.zoom,
+        startCX: cx,
+        startCY: cy,
+        origPanX: panRef.current.x,
+        origPanY: panRef.current.y,
+      };
+    } else if (e.touches.length === 1) {
+      touchRef.current = {
+        type: 'pan',
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        origPanX: panRef.current.x,
+        origPanY: panRef.current.y,
+      };
+      setSelected(null);
+    }
+  }, [setSelected]);
+  const handleTouchMove = useCallback((e) => {
+    if (!touchRef.current) return;
+    if (touchRef.current.type === 'pinch' && e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / touchRef.current.startDist;
+      panRef.current.zoom = Math.max(0.2, Math.min(4, touchRef.current.startZoom * scale));
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      panRef.current.x = touchRef.current.origPanX + (cx - touchRef.current.startCX);
+      panRef.current.y = touchRef.current.origPanY + (cy - touchRef.current.startCY);
+      forceRender((v) => v + 1);
+    } else if (touchRef.current.type === 'pan' && e.touches.length === 1) {
+      panRef.current.x = touchRef.current.origPanX + (e.touches[0].clientX - touchRef.current.startX);
+      panRef.current.y = touchRef.current.origPanY + (e.touches[0].clientY - touchRef.current.startY);
+      forceRender((v) => v + 1);
+    }
+  }, []);
+  const handleTouchEnd = useCallback(() => {
+    touchRef.current = null;
+  }, []);
+
   const closeButton = (
     <button id="brain-explorer-close" className="brain-explorer-close" onClick={onClose} aria-label="Close brain explorer">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -924,6 +978,11 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          style={{ touchAction: 'none' }}
         >
           <defs>
             <filter id="node-glow">

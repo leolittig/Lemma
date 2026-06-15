@@ -244,6 +244,24 @@ button.settings-btn:active {
     width: 2.1rem !important;
     height: 2.1rem !important;
   }
+
+  button.topbar-new-btn {
+    padding: 0 !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: #555 !important;
+  }
+
+  button.topbar-new-btn .topbar-new-label {
+    max-width: 0 !important;
+    margin-left: 0 !important;
+    opacity: 0 !important;
+  }
+
+  button.topbar-new-btn:hover {
+    background: rgba(0, 0, 0, 0.05) !important;
+    color: #1a1a1a !important;
+  }
 }
 
 
