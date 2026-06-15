@@ -41,7 +41,7 @@ export default function TopBar({
           </svg>
           <span className="topbar-new-label">New chat</span>
         </button>
-        <img src={lemmaLogo} className="topbar-logo" alt="LEMMA" />
+        <img src={lemmaLogo} className="topbar-logo" alt="LEMMA" draggable="false" />
       </div>
       <ModelPicker {...modelPickerProps} />
       {onToggleBrainExplorer && (

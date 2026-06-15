@@ -860,10 +860,12 @@ button.brain-ref-chip:hover { background: rgba(124, 111, 196, 0.18); transform: 
   max-width: 1440px;
   margin: 0 auto;
   width: 100%;
+  overflow-y: auto;
 }
 .brain-calendar-main {
   flex: 1.5;
   min-width: 0;
+  min-height: 580px;
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -1029,6 +1031,7 @@ button.brain-calendar-today-btn:hover {
 .brain-calendar-details {
   flex: 1;
   min-width: 0;
+  min-height: 350px;
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -1833,3 +1836,88 @@ button.brain-zoom-reset-btn:hover {
 button.brain-zoom-reset-btn:active {
   transform: scale(0.95);
 }
+
+/* ── Responsive Calendar Layout ── */
+@media (max-width: 900px) {
+  .brain-calendar-container {
+    flex-direction: column;
+    overflow-y: auto;
+    height: calc(100vh - 60px);
+    align-items: stretch;
+    padding: 1.5rem 1rem 1rem;
+    margin-top: 3.75rem;
+  }
+  .brain-calendar-main {
+    flex: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .brain-calendar-details {
+    flex: none;
+    width: 100%;
+    margin-top: 1rem;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-height: 750px) {
+  .brain-calendar-main {
+    min-height: 480px;
+  }
+  .brain-calendar-details {
+    min-height: 300px;
+  }
+  .brain-calendar-day-cell {
+    min-height: 60px;
+  }
+  .brain-calendar-cell-events {
+    gap: 0.1rem;
+  }
+  .brain-calendar-cell-event-pill {
+    font-size: 0.6rem;
+    padding: 0.04rem 0.15rem;
+  }
+}
+
+@media (max-height: 600px) {
+  .brain-calendar-main {
+    min-height: 380px;
+  }
+  .brain-calendar-details {
+    min-height: 250px;
+  }
+  .brain-calendar-day-cell {
+    min-height: 45px;
+    padding: 0.2rem;
+  }
+  .brain-calendar-day-num {
+    font-size: 0.75rem;
+    margin-bottom: 0.1rem;
+  }
+  .brain-calendar-cell-events {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .brain-calendar-month-title {
+    font-size: 1.1rem;
+  }
+  .brain-calendar-day-header {
+    font-size: 0.65rem;
+    padding: 0.4rem 0.1rem;
+  }
+  .brain-calendar-day-cell {
+    min-height: 50px;
+    padding: 0.2rem;
+  }
+  .brain-calendar-day-num {
+    font-size: 0.75rem;
+    margin-bottom: 0.1rem;
+  }
+  .brain-calendar-cell-event-pill {
+    font-size: 0.55rem;
+    padding: 0.02rem 0.1rem;
+  }
+}
+

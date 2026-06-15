@@ -7,7 +7,8 @@
     POST /api/brain/mode           Switch to a different brain mode.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+import asyncio
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -15,7 +16,67 @@ from ..model_manager import manager, generation_lock, acquire_generation_lock
 from ..storage import brain as storage_brain
 
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+        self.loop = None
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        if not self.loop:
+            try:
+                self.loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+
+    def disconnect(self, websocket: WebSocket):
+        try:
+            self.active_connections.remove(websocket)
+        except ValueError:
+            pass
+
+    async def broadcast(self, message: dict):
+        for connection in list(self.active_connections):
+            try:
+                await connection.send_json(message)
+            except Exception:
+                self.disconnect(connection)
+
+    def send_notification(self, event_type: str, data: dict = None):
+        if not self.active_connections:
+            return
+        
+        loop = self.loop
+        if not loop:
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                pass
+                
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self.broadcast({"type": event_type, "data": data}),
+                loop
+            )
+
+
+ws_manager = ConnectionManager()
+storage_brain.register_listener(ws_manager.send_notification)
+
 router = APIRouter()
+
+
+@router.websocket("/api/brain/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception:
+        ws_manager.disconnect(websocket)
 
 
 class BrainModeRequest(BaseModel):
@@ -156,6 +217,7 @@ async def delete_file(
 
     try:
         target_path.unlink()
+        ws_manager.send_notification("graph_changed")
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -184,6 +246,7 @@ async def init_brain(req: BrainInitRequest, mode: str = Query(default=None)):
     resolved_mode = _resolve_mode(mode)
     try:
         storage_brain.init_root(resolved_mode, req.name)
+        ws_manager.send_notification("graph_changed")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "ok", "user_name": storage_brain.get_user_name(resolved_mode)}
@@ -335,6 +398,7 @@ async def reset_brain(
     resolved_mode = _resolve_mode(mode)
     try:
         storage_brain.reset_brain(resolved_mode)
+        ws_manager.send_notification("graph_changed")
         return {"status": "ok"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

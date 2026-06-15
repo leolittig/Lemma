@@ -26,6 +26,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     open: true,
-    proxy: Object.fromEntries(BACKEND_PATHS.map((path) => [path, BACKEND])),
+    proxy: Object.fromEntries(BACKEND_PATHS.map((path) => [
+      path,
+      {
+        target: BACKEND,
+        ws: true,
+      }
+    ])),
   },
 })

@@ -460,6 +460,10 @@
   margin-left: 1rem;
   object-fit: contain;
   filter: url(#make-white-transparent); /* Remove white background using SVG color matrix */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 /* Empty Chat Welcome State styles */
@@ -497,6 +501,10 @@
   margin: -3%;
   object-fit: contain;
   filter: url(#make-white-transparent); /* Remove white background using SVG color matrix */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .empty-chat-title {

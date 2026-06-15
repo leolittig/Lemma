@@ -43,14 +43,14 @@
 }
 
 .topbar-logo {
-  height: 4.5rem;
-  max-height: 100px;
+  height: 1.8rem;
   object-fit: contain;
-  margin-left: 0.25rem;
+  margin-left: 0.5rem;
   margin-right: 0.5rem;
-  margin-top: 0.5rem;
-  filter: url(#make-white-transparent);
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 button.topbar-icon-btn {

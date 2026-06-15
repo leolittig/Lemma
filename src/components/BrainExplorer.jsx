@@ -413,7 +413,6 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [editorContent, setEditorContent] = useState('');
   const [editorTab, setEditorTab] = useState('preview');
   const [paneWidth, setPaneWidth] = useState(480);
@@ -588,9 +587,9 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
     return () => { cancelled = true; };
   }, [brainMode, reloadKey]);
 
-  // Poll graph data so background memory commits show up live.
+  // Sync graph data when the graph changes.
   useEffect(() => {
-    const timer = setInterval(() => {
+    const syncGraph = () => {
       api.fetchBrainGraph(brainMode)
         .then((data) => {
           setSim((currSim) => {
@@ -631,7 +630,12 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
           });
         })
         .catch((err) => console.error('Real-time background graph sync failed:', err));
-    }, 2500);
+    };
+
+    window.addEventListener('brain-graph-changed', syncGraph);
+    return () => {
+      window.removeEventListener('brain-graph-changed', syncGraph);
+    };
 
     function syncOpenNode(data, structureChanged) {
       const cur = selectedRef.current;
@@ -649,21 +653,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
           .catch((err) => console.error('Failed to sync open brain file:', err));
       }
     }
-    return () => clearInterval(timer);
-  }, [brainMode]);
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const data = await api.fetchBrainGraph(brainMode);
-      setSim(() => settle(initSimulation(data, nodeSizeMult, edgeLength)));
-      simAlpha.current = 1.0;
-    } catch (err) {
-      console.error('Brain graph refresh failed:', err);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [brainMode]);
+  }, [brainMode, nodeSizeMult, edgeLength]);
 
   const selectNodeById = useCallback(async (id, label, updated) => {
     setView('graph');
@@ -701,13 +691,14 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       setSelected({ id: selected.id, label: selected.label, updated: updatedNode ? updatedNode.updated : selected.updated });
       setSim(() => settle(initSimulation(data)));
       simAlpha.current = 1.0;
+      setEditorTab('preview');
     } catch (err) {
       console.error('Brain file save failed:', err);
       alert('Save failed. Keep the --- frontmatter (created/updated/type) and balanced [[links]].');
     } finally {
       setSaving(false);
     }
-  }, [brainMode, selected, editorContent]);
+  }, [brainMode, selected, editorContent, setEditorTab]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -901,17 +892,6 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
       {closeButton}
       {tabBar}
 
-      <div className="brain-explorer-toolbar" style={{ right: `${rightOffset}px` }}>
-
-        <button id="brain-refresh-btn" className="brain-refresh-btn" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh brain view" title="Refresh brain view">
-          <svg className={`brain-refresh-icon${refreshing ? ' spinning' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="23 4 23 10 17 10" />
-            <polyline points="1 20 1 14 7 14" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-          <span className="brain-refresh-label">Refresh</span>
-        </button>
-      </div>
 
       <div className={`brain-explorer-body ${selected ? 'split' : ''}`}>
         <svg
