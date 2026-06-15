@@ -55,7 +55,7 @@ const stepIndex = (steps, savedValue, defaultIndex) => {
   return i === -1 ? defaultIndex : i;
 };
 
-export default function SettingsModal({ open, onClose, settings, onReloadModel, onReset, modelPickerProps }) {
+export default function SettingsModal({ open, onClose, settings, onReloadModel, onReset, modelPickerProps, onRefreshModels }) {
   const {
     systemPrompt, setSystemPrompt,
     temperature, setTemperature,
@@ -75,6 +75,13 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel, 
     const timer = setTimeout(() => adjustTextareaHeight(textareaRef.current), 50);
     return () => clearTimeout(timer);
   }, [systemPrompt, open]);
+
+  // Refresh available models when settings modal opens
+  useEffect(() => {
+    if (open && onRefreshModels) {
+      onRefreshModels();
+    }
+  }, [open, onRefreshModels]);
 
   const ctxIndex = stepIndex(CTX_STEPS, contextSize, CTX_DEFAULT_INDEX);
   const maxTokensIndex = stepIndex(MAX_TOKENS_STEPS, maxTokens, MAX_TOKENS_DEFAULT_INDEX);
@@ -102,11 +109,11 @@ export default function SettingsModal({ open, onClose, settings, onReloadModel, 
         </div>
         <div className="settings-field">
           <div className="settings-toggle-row">
-            <label className="settings-label">enable thinking when supported</label>
+            <label className="settings-label">Enable thinking (when supported)</label>
             <ToggleSwitch
               on={thinkingEnabled}
               onToggle={() => setThinkingEnabled((v) => !v)}
-              label="enable thinking when supported"
+              label="Enable thinking (when supported)"
             />
           </div>
         </div>

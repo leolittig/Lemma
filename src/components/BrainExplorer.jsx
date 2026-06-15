@@ -218,7 +218,7 @@ function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 270) {
       const share = (subtreeSize[childId] / totalSize) * angularSpan;
       const childAngle = currentAngle + share / 2;
       const parentPos = pos[nodeId];
-      const baseLen = depthVal === 1 ? edgeLength : 110;
+      const baseLen = depthVal === 1 ? edgeLength * 1.45 : 110;
       const len = baseLen + (depthVal > 1 && sortedChildren.length > 3 ? (idx % 2) * 20 : 0);
 
       pos[childId] = {
@@ -267,7 +267,7 @@ function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 270) {
   const nodes = rawNodes.map((n) => {
     const isRoot = n.id === ROOT_ID;
     const deg = degree[n.id] || 0;
-    const radius = (isRoot ? 26
+    const radius = (isRoot ? 45
       : depth[n.id] === 1 ? 16 + Math.min(deg, 8) * 1.5
         : 9 + Math.min(deg, 6) * 1.2) * nodeSizeMult;
     return {
@@ -815,6 +815,16 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
 
   const tabBar = (
     <div className="brain-view-tabs">
+      <button
+        className="brain-view-tab brain-explorer-close-tab"
+        onClick={onClose}
+        aria-label="Back to chat"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '0.3rem', display: 'inline-block', verticalAlign: 'middle', position: 'relative', top: '-1px' }}>
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        <span>Back to chat</span>
+      </button>
       {VIEWS.map((v) => (
         <button
           key={v.key}
@@ -1102,7 +1112,7 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
         )}
       </div>
 
-      <div className="brain-zoom-controls" style={{ right: `${rightOffset}px` }}>
+      <div className="brain-zoom-controls">
         <button
           className="brain-zoom-btn"
           onClick={() => {

@@ -56,7 +56,6 @@ export default function App() {
   // Which floating surfaces are open.
   const [showSettings, setShowSettings] = useState(false);
   const [showAddModel, setShowAddModel] = useState(false);
-  const [showModelPicker, setShowModelPicker] = useState(false);
   const [showBrainExplorer, setShowBrainExplorer] = useState(false);
   // null = unknown/loading, true/false = whether the root node is set up.
   const [brainInitialized, setBrainInitialized] = useState(null);
@@ -178,7 +177,6 @@ export default function App() {
   }, [settings.brainEnabled, activeProfileObj]);
 
   const handleSelectModel = async (model) => {
-    setShowModelPicker(false);
     const ok = await models.selectModel(model, settings.systemPrompt);
     if (ok) chat.setIsResponding(false);
   };
@@ -189,18 +187,12 @@ export default function App() {
     if (ok) chat.setIsResponding(false);
   };
 
-  const handleToggleModelPicker = () => {
-    const nextOpen = !showModelPicker;
-    setShowModelPicker(nextOpen);
-    if (nextOpen) models.refreshModels();
-  };
-
-  // Returns true when a download started; the picker reopens to show progress.
+  // Returns true when a download started.
   const handleDownloadRequest = (rawRepo) => {
     const started = models.startDownload(rawRepo);
     if (started) {
       setShowAddModel(false);
-      setShowModelPicker(true);
+      alert(`Started downloading ${rawRepo} in the background.`);
     }
     return started;
   };
@@ -241,7 +233,13 @@ export default function App() {
           conversations={conversations.conversations}
           activeId={conversations.activeId}
           collapsed={settings.sidebarCollapsed}
-          onSelect={(id) => { conversations.select(id); setShowBrainExplorer(false); }}
+          onSelect={(id) => {
+            conversations.select(id);
+            setShowBrainExplorer(false);
+            if (window.innerWidth <= 768) {
+              settings.setSidebarCollapsed(true);
+            }
+          }}
           onRename={conversations.rename}
           onDelete={conversations.remove}
           profiles={profiles}
@@ -294,20 +292,15 @@ export default function App() {
               setShowSettings(false);
             }}
             modelPickerProps={{
-              open: showModelPicker,
-              onToggle: handleToggleModelPicker,
-              onClose: () => setShowModelPicker(false),
               modelName: models.modelName,
               availableModels: models.availableModels,
-              downloads: models.downloads,
               isChangingModel: models.isChangingModel,
               onSelectModel: handleSelectModel,
-              onDismissDownload: models.dismissDownload,
               onAddModel: () => {
-                setShowModelPicker(false);
                 setShowAddModel(true);
               },
             }}
+            onRefreshModels={models.refreshModels}
           />
           {models.isChangingModel && <ModelLoadingOverlay />}
           <AddModelModal

@@ -265,35 +265,17 @@ button.settings-action-btn.danger-text:active {
 
 /* Model picker inside settings modal styling */
 .settings-modal .model-selector-wrapper {
-  background: #ffffff !important;
-  border: 1px solid rgba(0, 0, 0, 0.12) !important;
-  border-radius: 10px !important;
-  padding: 0.5rem 0.8rem !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
   width: 100% !important;
-  box-sizing: border-box !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 0.6rem !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02) !important;
-}
-
-.settings-modal .model-title {
-  font-size: 0.95rem !important;
-  color: #1a1a1a !important;
-}
-
-.settings-modal .model-picker-dropdown {
-  position: relative !important;
-  top: 0.5rem !important;
-  left: 0 !important;
-  transform: none !important;
-  width: 100% !important;
-  max-width: none !important;
   box-shadow: none !important;
-  border: 1px solid rgba(0, 0, 0, 0.06) !important;
-  background: rgba(0, 0, 0, 0.02) !important;
-  box-sizing: border-box !important;
-  animation: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 0 !important;
 }
+
 
 

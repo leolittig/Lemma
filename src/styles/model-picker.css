@@ -1,123 +1,52 @@
-/* The model picker (components/ModelPicker.jsx): the dropdown of available
-   models, download progress entries, the add-model button, and the
-   full-screen overlay shown while a model is loading
-   (components/ModelLoadingOverlay.jsx). */
+/* The model picker (components/ModelPicker.jsx): native select element styled to look like a pill. */
 
 .model-selector-wrapper {
   position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  width: 100%;
 }
 
-button.model-picker-toggle {
-  width: 2rem !important;
-  height: 2rem !important;
-  border-radius: 50% !important;
-  background: transparent !important;
-  color: #666666 !important;
-  box-shadow: none !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  border: none !important;
-  transition: all 0.3s ease !important;
-}
-
-button.model-picker-toggle:hover {
-  background: rgba(0, 0, 0, 0.05) !important;
-  color: #1a1a1a !important;
-}
-
-button.model-picker-toggle.active {
-  background: rgba(0, 0, 0, 0.05) !important;
-  color: #007aff !important;
-}
-
-button.model-picker-toggle.active .chevron-icon {
-  transform: rotate(180deg);
-}
-
-.chevron-icon {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.model-picker-dropdown {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  padding: 0.5rem;
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 240px;
-  max-width: 360px;
-  animation: dropdownFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes dropdownFadeIn {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-button.model-picker-item {
+select.model-picker-select {
   width: 100% !important;
-  height: auto !important;
-  border-radius: 8px !important;
-  background: transparent !important;
-  color: #333333 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  padding: 0.6rem 0.9rem !important;
-  cursor: pointer !important;
+  border-radius: 999px !important; /* pill shaped */
+  padding: 0.55rem 2.5rem 0.55rem 1.1rem !important;
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: #1a1a1a !important;
   font-family: inherit !important;
   font-size: 0.95rem !important;
-  font-weight: 500 !important;
-  border: none !important;
-  box-shadow: none !important;
-  text-align: left !important;
+  font-weight: 550 !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231a1a1a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 1rem center !important;
+  background-size: 14px !important;
+  outline: none !important;
   transition: all 0.2s ease !important;
-  gap: 1rem;
-}
-
-button.model-picker-item:hover {
-  background: rgba(0, 0, 0, 0.04) !important;
-  color: #1a1a1a !important;
-}
-
-button.model-picker-item.selected {
-  background: rgba(0, 122, 255, 0.08) !important;
-  color: #007aff !important;
-  font-weight: 600 !important;
-}
-
-.model-item-full {
-  flex: 1;
+  box-sizing: border-box !important;
+  text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.check-icon {
-  color: #007aff;
-  flex-shrink: 0;
+select.model-picker-select:hover {
+  background-color: rgba(0, 0, 0, 0.07) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+select.model-picker-select:focus {
+  border-color: #007aff !important;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15) !important;
+}
+
+select.model-picker-select:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
 }
 
 /* Full-screen overlay while the backend swaps models. */
@@ -162,107 +91,3 @@ button.model-picker-item.selected {
     opacity: 1;
   }
 }
-
-/* Download entries inside the dropdown (progress bar / error message). */
-.model-picker-download-item {
-  width: 100%;
-  padding: 0.6rem 0.9rem;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.03);
-}
-
-.model-download-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.9rem;
-  color: #555555;
-  font-weight: 500;
-  gap: 0.5rem;
-}
-
-.model-download-percent {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #007aff;
-}
-
-.model-download-progress-bg {
-  width: 100%;
-  height: 4px;
-  background: rgba(0, 122, 255, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.model-download-progress-bar {
-  height: 100%;
-  background: #007aff;
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-.model-download-error {
-  font-size: 0.8rem;
-  color: #ff3b30;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.5rem;
-  line-height: 1.3;
-}
-
-button.model-download-dismiss-btn {
-  background: transparent !important;
-  color: #ff3b30 !important;
-  border: none !important;
-  padding: 0 !important;
-  cursor: pointer !important;
-  font-size: 0.9rem !important;
-  width: auto !important;
-  height: auto !important;
-  box-shadow: none !important;
-}
-
-/* Centered circular solid add button (styled like submit button, but smaller) */
-button.model-picker-add-btn {
-  width: 2.25rem !important;
-  height: 2.25rem !important;
-  border-radius: 50% !important;
-  background: #007aff !important;
-  color: white !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 0 !important;
-  cursor: pointer !important;
-  border: none !important;
-  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.15) !important;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  margin: 0.5rem auto 0 auto !important;
-}
-
-button.model-picker-add-btn:hover {
-  background: #0084ff !important;
-  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25) !important;
-  transform: scale(1.05) !important;
-}
-
-button.model-picker-add-btn:active {
-  transform: translateY(1px) scale(0.95) !important;
-  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.15) !important;
-}
-
-@media (max-width: 480px) {
-  .model-picker-dropdown {
-    width: calc(100vw - 2rem) !important;
-    min-width: 0 !important;
-    max-width: none !important;
-  }
-}
-

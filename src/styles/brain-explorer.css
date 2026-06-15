@@ -143,7 +143,7 @@ button.brain-refresh-btn:disabled {
 /* Bottom-left live log: what the memory model is doing, in real time. */
 .brain-activity-log {
   position: absolute;
-  bottom: 1rem;
+  bottom: 4.5rem;
   left: 1.2rem;
   z-index: 10;
   width: 340px;
@@ -808,6 +808,10 @@ button.brain-view-tab {
 
 button.brain-view-tab:hover { color: #1e293b; transform: none; }
 button.brain-view-tab.active { background: rgba(124, 111, 196, 0.12); color: #7c6fc4; }
+
+button.brain-explorer-close-tab {
+  display: none !important;
+}
 
 /* ── Generic off-grid view pane ── */
 .brain-view-pane {
@@ -1709,7 +1713,8 @@ input.brain-visuals-slider::-webkit-slider-thumb:hover {
 /* Zoom controls */
 .brain-zoom-controls {
   position: absolute;
-  bottom: 1.5rem;
+  bottom: 1rem;
+  left: 1.2rem;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1721,12 +1726,14 @@ input.brain-visuals-slider::-webkit-slider-thumb:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: inherit;
   font-size: 0.8rem;
   font-weight: 600;
   color: rgba(30, 41, 59, 0.85);
   user-select: none;
+  width: 340px;
+  max-width: calc(100% - 2.4rem);
+  box-sizing: border-box;
 }
 
 button.brain-zoom-btn {
@@ -1759,7 +1766,8 @@ button.brain-zoom-btn:active {
 .brain-zoom-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 180px; /* Long enough for fine adjustments */
+  flex: 1;
+  min-width: 0;
   height: 4px;
   border-radius: 2px;
   background: rgba(0, 0, 0, 0.1);
@@ -1922,28 +1930,50 @@ button.brain-zoom-reset-btn:active {
 }
 
 @media (max-width: 768px) {
-  /* Stack Close button and Tab Bar vertically at the top of Brain Explorer */
+  /* Hide absolute close button on mobile; it is now in the tab bar */
   button.brain-explorer-close {
-    top: 0.5rem !important;
-    left: 1rem !important;
-    padding: 0.4rem 0.8rem !important;
+    display: none !important;
+  }
+
+  /* Show and style inline close button in the tab bar */
+  button.brain-explorer-close-tab {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    color: rgba(30, 41, 59, 0.85) !important;
+    font-weight: 600 !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border-radius: 0 !important;
+    padding-right: 0.75rem !important;
+    margin-right: 0.5rem !important;
+    background: transparent !important;
+    flex-shrink: 0 !important;
+  }
+
+  button.brain-explorer-close-tab:hover {
+    color: #1e293b !important;
   }
 
   .brain-view-tabs {
-    top: 3.25rem !important;
+    top: 0 !important;
     left: 0 !important;
     transform: none !important;
     width: 100vw !important;
     overflow-x: auto !important;
     white-space: nowrap !important;
     display: flex !important;
+    flex-wrap: nowrap !important;
     justify-content: flex-start !important;
+    align-items: center !important;
     padding: 0.25rem 0.75rem !important;
     border-radius: 0 !important;
     border-left: none !important;
     border-right: none !important;
+    border-top: none !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
     scrollbar-width: none !important; /* Firefox */
+    -webkit-overflow-scrolling: touch !important; /* iOS smooth scrolling */
+    box-sizing: border-box !important;
   }
 
   .brain-view-tabs::-webkit-scrollbar {
@@ -1954,15 +1984,16 @@ button.brain-zoom-reset-btn:active {
     flex-shrink: 0 !important;
   }
 
-  /* Ensure all views clear the stacked headers */
+
+  /* Ensure all views clear the single header bar at top: 0 */
   .brain-view-pane {
-    padding-top: 6.5rem !important;
+    padding-top: 3.25rem !important;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
   }
 
   .brain-calendar-container {
-    padding-top: 6.5rem !important;
+    padding-top: 3.25rem !important;
     margin-top: 0 !important;
     height: 100% !important;
   }

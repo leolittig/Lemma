@@ -348,7 +348,7 @@
   background: transparent !important;
 }
 
-#messages img {
+#messages img:not(.assistant-indicator-gif):not(.empty-chat-indicator) {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
@@ -450,6 +450,7 @@
   margin-bottom: 2px; /* align beautifully with bubble bottom */
   overflow: hidden; /* Crop edge artifacts */
   border-radius: 4px;
+  box-shadow: none !important;
 }
 
 .assistant-indicator-gif,
@@ -464,6 +465,7 @@
   -webkit-user-select: none;
   -webkit-user-drag: none;
   user-drag: none;
+  box-shadow: none !important;
 }
 
 /* Empty Chat Welcome State styles */
@@ -493,6 +495,7 @@
   overflow: hidden; /* Crop edge artifacts */
   border-radius: 8px;
   background: transparent;
+  box-shadow: none !important;
 }
 
 .empty-chat-indicator {
@@ -505,6 +508,7 @@
   -webkit-user-select: none;
   -webkit-user-drag: none;
   user-drag: none;
+  box-shadow: none !important;
 }
 
 .empty-chat-title {
@@ -538,6 +542,10 @@
     gap: 0.9rem !important;
   }
 
+  .messages-fade {
+    z-index: 14 !important;
+  }
+
   #messages > div {
     max-width: 90% !important;
   }
@@ -550,19 +558,30 @@
 
   .assistant-layout-column {
     max-width: 100% !important;
+    order: 1 !important;
   }
 
   .assistant-indicator-container {
-    width: 40px !important;
-    height: 40px !important;
+    width: 80px !important;
+    height: 80px !important;
     margin-bottom: 0 !important;
     margin-left: 0.25rem !important;
+    order: 2 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .assistant-indicator-container:empty {
+    display: none !important;
   }
 
   .assistant-indicator-gif,
   .assistant-indicator-static {
-    margin-top: 0.25rem !important;
-    margin-left: 0.25rem !important;
+    margin-top: 0 !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    box-shadow: none !important;
   }
 
   #messages > div table {
