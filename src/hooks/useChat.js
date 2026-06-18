@@ -123,6 +123,8 @@ function buildChatBody(cid, text, readyAttachments, settings) {
     max_tokens: Number.isFinite(parsedMaxTokens) ? parsedMaxTokens : null,
     smart_context: settings.smartContext,
     enable_brain: settings.brainEnabled,
+    // When on, the brain is read for context but not written to after the turn.
+    pause_brain: settings.pauseBrainWriting,
   };
 }
 
