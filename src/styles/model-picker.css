@@ -83,6 +83,17 @@ select.model-picker-select:disabled {
   color: #1a1a1a;
 }
 
+/* Inline warning under the picker when the active model's engine is missing. */
+.model-picker-warning {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #b45309;
+  background-color: rgba(245, 158, 11, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  margin-top: 0.5rem;
+}
+
 @keyframes modelOverlayFadeIn {
   from {
     opacity: 0;

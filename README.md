@@ -1,173 +1,76 @@
 # Lemma
 
-A lightweight local LLM chat interface optimized for Apple Silicon using MLX, React, and Vite.
+Lemma is a local AI system that runs large language models on your own machine —
+cross-platform, through **MLX** on Apple Silicon or **llama.cpp** (GGUF) on
+Windows, Linux, and macOS. Beyond chat, it gives the model a persistent,
+graph-based **brain**: as you talk, a second model automatically extracts the
+information worth keeping and files it into a linked graph of Markdown
+memories — a **calendar**, **people**, **tasks**, a **journal**, and other
+structures — then reads the relevant pieces back into context on later turns.
 
-## How it works
+It runs as two programs that talk over HTTP: a Python/FastAPI **backend**
+(`server/`) that loads the model, streams replies, manages downloads, and
+maintains the brain and conversation history (SQLite); and a React/Vite
+**frontend** (`src/`) that renders the chat, the model picker, and an
+interactive brain-graph explorer.
 
-Lemma is two programs that talk over HTTP:
+## Running it
 
-1. **Backend** (`server/`, started by [app.py](app.py)) — a Python FastAPI server that loads an MLX model into memory, streams generated replies, manages model downloads from Hugging Face, and persists conversations in SQLite.
-2. **Frontend** (`src/`) — a React app that renders the chat, reads the reply stream token by token, and renders Markdown, code, and LaTeX math (via `marked` + KaTeX).
+### 1. Prerequisites
 
-In development, Vite serves the frontend on port 5173 and proxies API calls to the backend on port 8000 (see [vite.config.js](vite.config.js)). In production, the backend serves the built frontend itself.
+- **Python 3.10+**
+- **Node.js 18+** (provides `npm`)
 
-## Quick start
+> `llama-cpp-python` installs prebuilt wheels on most platforms, but may build
+> from source — which needs a C/C++ toolchain and CMake.
 
-### 1. Set up a virtual environment
+### 2. Get the code
+
+```bash
+git clone <repo-url> Lemma
+cd Lemma
+```
+
+### 3. Install dependencies
+
+Create the virtual environment as **`.venv`** (the dev script expects that name):
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt  # Python backend + the right inference engine
+npm install                      # React frontend
 ```
 
-### 2. Install dependencies
+`requirements.txt` installs the correct engine for your platform automatically
+(MLX on macOS, llama.cpp everywhere).
 
-```bash
-pip install -r requirements.txt
-npm install
-```
-
-### 3. Run the app
-
-**Development mode (recommended)** — runs frontend and backend together:
+### 4. Run
 
 ```bash
 npm run dev
 ```
 
-Then open `http://localhost:5173`.
+This starts the backend and frontend together. Open **http://localhost:5173**.
 
-**Production mode** — build the frontend once, then the Python server serves everything:
+To run the production build instead (the backend serves the built frontend):
 
 ```bash
 npm run build
-python app.py
+python app.py        # then open http://127.0.0.1:8000
 ```
 
-Then open `http://127.0.0.1:8000`.
+## Recommended models
 
-## Features
+Pick a model in the app (the model picker can download it from Hugging Face).
+Good defaults per platform:
 
-* **Conversation sidebar** — history is saved locally in SQLite; rename, delete, and switch chats from the sidebar.
-* **Model management** — pick any downloaded model from the top-bar dropdown, or download a new one by entering a Hugging Face repo id. Switching unloads the old model and clears the MLX GPU cache to free memory.
-* **Thinking models** — reasoning models (Qwen 3, Gemma 4, …) get a Thinking toggle; the reasoning stream is parsed and shown in a collapsible block above the answer.
-* **Context & token management** — sliders cap the response length and the context (history) sent to the model. The "smart context window" keeps the start, a middle slice, and the most recent turns of an over-long chat, and the UI dims the messages that fell out.
-* **Attachments** — send images and audio to vision/audio-capable models.
-* **Brain (persistent memory)** — a second "brain manager" model maintains a graph of Markdown memory files (`brain/<mode>/`) linked by `[[wikilinks]]`: before each reply it routes the message to relevant memories and injects them (plus the `Assistant.md` persona) into the prompt; after each reply it updates the files in the background. Three modes in Settings choose which model does chat vs. brain work; the Brain Explorer (top bar) visualizes and edits the graph.
+| Platform | Engine | Model |
+|---|---|---|
+| macOS (Apple Silicon) | MLX | [`mlx-community/gemma-4-12B-it-8bit`](https://huggingface.co/mlx-community/gemma-4-12B-it-8bit) |
+| Windows / Linux | llama.cpp (GGUF) | [`unsloth/gemma-4-12B-it-qat-GGUF`](https://huggingface.co/unsloth/gemma-4-12B-it-qat-GGUF) |
 
-## Project structure
-
-Every feature lives in its own module. The fastest way to find something: decide whether it's backend (Python) or frontend (JS), then match the file name below.
-
-```text
-Lemma/
-├── app.py                       Backend entry point (just starts the server)
-├── server/                      Python backend, one module per feature
-│   ├── main.py                  Assembles the FastAPI app from the modules below
-│   ├── config.py                ALL paths and tunable constants
-│   ├── schemas.py               Shapes of the JSON request bodies (API contract)
-│   ├── model_manager.py         The loaded model(s): loading, swapping, brain modes
-│   ├── model_catalog.py         Lists models already in the Hugging Face cache
-│   ├── model_downloads.py       Background downloads + progress tracking
-│   ├── context_window.py        Trims long conversations to the token budget
-│   ├── thinking.py              Reasoning (<think>) tag detection/stripping
-│   ├── system_prompt.py         Persists the default system prompt
-│   ├── mlx_compat.py            Workaround for checkpoints with extra tensors
-│   ├── brain/
-│   │   └── instructions/        Modular instructions (general, people, calendar, etc.)
-│   ├── storage/
-│   │   ├── database.py          Conversations + messages (SQLite, chats.db)
-│   │   ├── uploads.py           Uploaded media files (uploads/)
-│   │   └── brain.py             Brain memory files: seeding, parsing, validation
-│   └── routes/                  One file per API area, each exposing a router
-│       ├── chat.py              POST /chat — routing, generation, brain updates
-│       ├── models.py            /model, /models, /download
-│       ├── conversations.py     /conversations CRUD
-│       ├── brain.py             /api/brain/* — graph, file CRUD, mode switch
-│       ├── files.py             /upload
-│       └── frontend.py          GET / (serves the built frontend)
-├── src/                         React frontend
-│   ├── main.jsx                 Entry point (mounts App)
-│   ├── App.jsx                  Root component: wires hooks to components
-│   ├── constants.js             Slider steps and other UI constants
-│   ├── api/client.js            EVERY backend call, in one place
-│   ├── hooks/                   Reusable state + behavior
-│   │   ├── useConversations.js  The sidebar list + the open conversation
-│   │   ├── useChat.js           The send flow: post a turn, stream the reply
-│   │   ├── useSettings.js       All user settings, persisted to localStorage
-│   │   ├── useModels.js         Active model, switching, downloads
-│   │   ├── useAttachments.js    Pending uploads for the composer
-│   │   ├── useAutoScroll.js     The follow-the-stream scroll lock
-│   │   ├── useMessageFlip.js    Slide-up reflow animation for the bubbles
-│   │   └── usePersistentState.js  localStorage-backed useState
-│   ├── components/              The UI, one file per area
-│   │   ├── TopBar.jsx           App bar (sidebar toggle, new chat, settings)
-│   │   ├── ModelPicker.jsx      Model dropdown + download progress
-│   │   ├── Sidebar.jsx          Conversation list (rename/delete/switch)
-│   │   ├── MessageList.jsx      The scrollable chat area
-│   │   ├── MessageBubble.jsx    One message (attachments, thinking, text)
-│   │   ├── BubbleText.jsx       Completed-message markdown + context dimming
-│   │   ├── ThinkingBlock.jsx    Collapsible reasoning panel
-│   │   ├── Composer.jsx         Input row (attach, thinking toggle, send)
-│   │   ├── BrainExplorer.jsx    Interactive memory graph viewer/editor
-│   │   ├── BrainActivityBlock.jsx  Collapsible brain log in assistant bubbles
-│   │   ├── Modal.jsx            Shared dialog shell (overlay + title + close)
-│   │   ├── ToggleSwitch.jsx     Shared on/off switch
-│   │   ├── SettingsModal.jsx    Settings dialog (incl. brain mode dropdown)
-│   │   ├── AddModelModal.jsx    "Download a model" dialog
-│   │   └── ModelLoadingOverlay.jsx  Spinner while swapping models
-│   ├── lib/                     Pure helpers (no state)
-│   │   ├── markdown.jsx         marked + KaTeX setup, streaming renderer
-│   │   ├── thinking.js          Splits reasoning from the answer
-│   │   ├── modelName.jsx        Pretty model name for the top bar
-│   │   └── textarea.js          Auto-growing textarea helper
-│   └── styles/                  CSS, one file per UI area
-│       ├── index.css            Imports all of the below
-│       ├── base.css             Font, page defaults, button/textarea defaults
-│       ├── layout.css           Page skeleton
-│       ├── topbar.css           App bar
-│       ├── sidebar.css          Conversation sidebar
-│       ├── messages.css         Chat area, bubbles, animations, markdown
-│       ├── thinking.css         Reasoning block
-│       ├── composer.css         Input area + attachment chips
-│       ├── controls.css         Shared switches and sliders
-│       ├── settings.css         Modal dialogs + settings form
-│       └── model-picker.css     Model dropdown + loading overlay
-├── chats.db                     SQLite database (created on first run)
-├── uploads/                     Uploaded attachment files
-├── system_prompt.txt            Saved default system prompt (optional)
-├── requirements.txt             Python dependencies
-├── package.json                 Node dependencies and npm scripts
-├── vite.config.js               Dev-server proxy to the backend
-└── index.html                   Vite HTML entry point
-```
-
-## Where to change what
-
-| I want to… | Look in |
-|---|---|
-| Change a default (model, port, paths, trimming shares) | [server/config.py](server/config.py), [src/constants.js](src/constants.js) |
-| Change how long chats are trimmed | [server/context_window.py](server/context_window.py) |
-| Change how replies are generated/streamed | [server/routes/chat.py](server/routes/chat.py) |
-| Change what's stored, or the DB schema | [server/storage/database.py](server/storage/database.py) |
-| Change model loading/switching behavior | [server/model_manager.py](server/model_manager.py) |
-| Add/modify an API endpoint | the matching file in [server/routes/](server/routes/) + [src/api/client.js](src/api/client.js) |
-| Change a request body's fields | [server/schemas.py](server/schemas.py) + [src/api/client.js](src/api/client.js) |
-| Change how messages look or animate | [src/components/MessageBubble.jsx](src/components/MessageBubble.jsx) + [src/styles/messages.css](src/styles/messages.css) |
-| Change brain routing / memory updates | [server/routes/chat.py](server/routes/chat.py) + [server/brain/instructions/](server/brain/instructions/) |
-| Change brain file format or seeding | [server/storage/brain.py](server/storage/brain.py) |
-| Change the brain graph UI | [src/components/BrainExplorer.jsx](src/components/BrainExplorer.jsx) + [src/styles/brain-explorer.css](src/styles/brain-explorer.css) |
-| Change markdown / math rendering | [src/lib/markdown.jsx](src/lib/markdown.jsx) |
-| Add a user setting | [src/hooks/useSettings.js](src/hooks/useSettings.js) + [src/components/SettingsModal.jsx](src/components/SettingsModal.jsx) |
-| Change scroll/“follow the stream” behavior | [src/hooks/useAutoScroll.js](src/hooks/useAutoScroll.js) |
-| Restyle a UI area | the matching file in [src/styles/](src/styles/) |
-
-## How to add a feature
-
-**A new API endpoint.** Add a request schema to `server/schemas.py` (if it has a body), implement the endpoint in the matching `server/routes/` module (or a new module exposing a `router`, included in `server/main.py`), add a function for it in `src/api/client.js`, and — if it's a new top-level path — add the path to `BACKEND_PATHS` in `vite.config.js`.
-
-**A new user setting.** Add a persisted value in `src/hooks/useSettings.js`, render its control in `src/components/SettingsModal.jsx`, and if the backend needs it: send it in the `/chat` body (`buildChatBody` in `src/hooks/useChat.js`), add the field to `ChatRequest` in `server/schemas.py`, and use it in `server/routes/chat.py`.
-
-**A new piece of UI.** Create a component in `src/components/`, a stylesheet in `src/styles/` (imported from `styles/index.css`), and render it from `App.jsx` or the component that owns that screen area. Keep state in `App.jsx` or a hook; keep components presentational where possible.
-
-**A new kind of stored data.** Add a table or column in `server/storage/database.py` (`init_db` shows the backfill pattern for adding columns to existing databases), plus accessor functions in the same file.
+On machines with less memory, try a smaller model such as
+[`mlx-community/gemma-4-e4b-it-4bit`](https://huggingface.co/mlx-community/gemma-4-e4b-it-4bit)
+(macOS) or a lower-bit GGUF quant.

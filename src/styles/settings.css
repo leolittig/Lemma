@@ -12,8 +12,10 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  padding: 5rem 1rem;
   z-index: 1000;
 
   opacity: 0;
@@ -39,10 +41,17 @@
   flex-direction: column;
   overflow: hidden;
   z-index: 1001;
+  flex-shrink: 0;
+  margin-bottom: 5rem;
 
   opacity: 0;
   transform: scale(0.96) translateY(8px);
   transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The Add Model dialog gets more room — repo ids and GGUF filenames are long. */
+.settings-modal.add-model-modal {
+  max-width: 620px;
 }
 
 .settings-overlay.visible .settings-modal {
@@ -111,6 +120,13 @@ button.close-btn:active {
   font-size: 0.9rem;
   font-weight: 600;
   color: #3a3a3c;
+}
+
+/* Small explanatory text under a toggle row. */
+.settings-hint {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #8a8a8e;
 }
 
 /* The Instructions textarea reuses the base textarea look; flex doesn't apply
@@ -217,6 +233,138 @@ button.settings-action-btn.secondary:hover {
   box-sizing: border-box;
 }
 
+.add-model-error {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: #ef4444;
+}
+
+.add-model-empty {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.add-model-note {
+  font-size: 0.8rem;
+  color: #047857;
+  background-color: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.75rem;
+}
+
+.add-model-variants,
+.add-model-downloads {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.add-model-variants .settings-label,
+.add-model-downloads .settings-label {
+  margin-bottom: 0.25rem;
+}
+
+/* One selectable model file (GGUF variant or the full MLX repo). */
+.variant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.variant-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.variant-name {
+  font-size: 0.9rem;
+  font-weight: 550;
+  color: #1a1a1a;
+  word-break: break-all;
+}
+
+.variant-size {
+  font-size: 0.78rem;
+  color: #888;
+}
+
+.variant-row button.settings-action-btn {
+  flex-shrink: 0;
+}
+
+/* A live download with its progress bar. */
+.dl-row {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.dl-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dl-row-name {
+  font-size: 0.88rem;
+  font-weight: 550;
+  color: #1a1a1a;
+  word-break: break-all;
+}
+
+.dl-row-dismiss {
+  border: none;
+  background: transparent;
+  color: #999;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+
+.dl-row-dismiss:hover {
+  color: #555;
+}
+
+.dl-progress {
+  height: 7px;
+  border-radius: 999px;
+  background-color: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  margin-top: 0.45rem;
+}
+
+.dl-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background-color: #007aff;
+  transition: width 0.5s ease;
+}
+
+.dl-row-sub {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
+
+.dl-row-error {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: #ef4444;
+}
+
 .settings-footer-actions {
   display: flex;
   justify-content: center;
@@ -279,3 +427,437 @@ button.settings-action-btn.danger-text:active {
 
 
 
+/* Custom Model Picker Dropdown */
+.model-picker-container {
+  position: relative;
+  width: 100%;
+}
+
+.model-picker-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.1rem;
+  border-radius: 10rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: white;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #1a1a1a;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.model-picker-trigger:hover:not(:disabled) {
+  border-color: rgba(0, 0, 0, 0.2);
+  background: #fafafa;
+}
+
+.model-picker-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.model-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 32px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  z-index: 1002;
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 0.5rem;
+  gap: 0.25rem;
+}
+
+.model-picker-item {
+  margin-left: 0.25rem;
+  margin-right: 0.25rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #1a1a1a;
+  transition: background 0.2s;
+}
+
+.model-picker-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.model-picker-item.active {
+  background: rgba(0, 122, 255, 0.08);
+  color: #007aff;
+  font-weight: 600;
+}
+
+.model-picker-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-picker-item.add-model {
+  padding-right: 1.5rem;
+  margin-top: 0.25rem;
+  color: #007aff;
+  font-weight: 500;
+}
+
+.model-trash-btn {
+  height: 2rem;
+  width: 2rem;
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.4;
+  transition: all 0.2s;
+  margin-left: 8px;
+}
+
+.model-trash-btn:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.chevron-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #666;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chevron-icon.open {
+  transform: rotate(180deg);
+}
+
+/* "Model" title + the "?" help affordance on one row. */
+.settings-label-with-help {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Collapsible "Downloads" area under the model picker. */
+.settings-downloads {
+  display: flex;
+  flex-direction: column;
+}
+
+.downloads-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999rem;
+  background: rgba(0, 0, 0, 0.02);
+  color: #3a3a3c;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.downloads-toggle:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.downloads-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.downloads-toggle-main {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.downloads-icon {
+  color: #6e6e73;
+}
+
+.downloads-count {
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: #007aff;
+  color: #ffffff;
+  font-size: 0.7rem;
+  line-height: 1.1rem;
+  text-align: center;
+}
+
+.downloads-toggle-right {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.downloads-pct {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #007aff;
+  font-variant-numeric: tabular-nums;
+}
+
+.downloads-list {
+  width: 80%;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.6rem;
+  padding: 0.2rem 0.1rem;
+}
+
+.downloads-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.downloads-item-name {
+  font-size: 0.8rem;
+  color: #3a3a3c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.downloads-item-pct {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6e6e73;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.downloads-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.downloads-item-btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #8a8a8e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.downloads-item-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #3a3a3c;
+}
+
+.downloads-item-btn.cancel:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+/* Cancel/restart controls on the Add Model dialog's download rows. */
+.dl-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.dl-row-action {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dl-row-action:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #444;
+}
+
+.dl-row-action.cancel:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+/* The "?" help button and its floating speech bubble. */
+.model-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.model-help-btn {
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  color: #6e6e73;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.model-help-btn:hover {
+  background: rgba(0, 122, 255, 0.12);
+  color: #007aff;
+}
+
+/* Rendered in a portal on document.body (fixed) so the Settings modal's
+   overflow:hidden can't clip it; left/top are set inline from JS. */
+.model-help-bubble {
+  position: fixed;
+  z-index: 2000;
+  width: 19rem;
+  max-width: calc(100vw - 1rem);
+  padding: 0.85rem 0.95rem;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  cursor: default;
+}
+
+/* Invisible buffer around the bubble: the cursor must move past this margin
+   (in any direction, including back across the gap to the "?") before the
+   bubble counts as un-hovered and closes. */
+.model-help-bubble::after {
+  content: "";
+  position: absolute;
+  inset: -22px;
+  z-index: -1;
+}
+
+/* Pointer triangle; its left is set inline, and it flips edge with placement. */
+.model-help-arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  transform: rotate(45deg);
+}
+
+.model-help-bubble.placement-above .model-help-arrow {
+  bottom: -6px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.model-help-bubble.placement-below .model-help-arrow {
+  top: -6px;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.model-help-text {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #3a3a3c;
+}
+
+.model-help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.model-help-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.model-help-item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.model-help-link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #007aff;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.model-help-dl {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #007aff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.model-help-dl:hover {
+  background: transparent;
+  color: #0066d6;
+}
+
+.model-help-note {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6e6e73;
+}

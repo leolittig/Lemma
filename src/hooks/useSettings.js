@@ -50,9 +50,14 @@ export function useSettings() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistentState(
     'sidebar_collapsed', loadBool(false), saveBool);
 
-  // Whether the brain memory feature is enabled.
-  const [brainEnabled, setBrainEnabled] = usePersistentState(
-    'brain_enabled', loadBool(true), saveBool);
+  // The brain memory feature is always enabled.
+  const brainEnabled = true;
+  const setBrainEnabled = () => {};
+
+  // Pause brain writing: when on, the brain is still read for context (routing
+  // + memory injection) but is never written to after a turn — it's read-only.
+  const [pauseBrainWriting, setPauseBrainWriting] = usePersistentState(
+    'pause_brain_writing', loadBool(false), saveBool);
 
   // UI preference: whether memory logs in the explorer are detailed or simplified.
   const [detailedLogs, setDetailedLogs] = usePersistentState(
@@ -67,6 +72,7 @@ export function useSettings() {
     smartContext, setSmartContext,
     sidebarCollapsed, setSidebarCollapsed,
     brainEnabled, setBrainEnabled,
+    pauseBrainWriting, setPauseBrainWriting,
     detailedLogs, setDetailedLogs,
   };
 }

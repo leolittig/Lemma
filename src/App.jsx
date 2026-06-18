@@ -56,6 +56,9 @@ export default function App() {
   // Which floating surfaces are open.
   const [showSettings, setShowSettings] = useState(false);
   const [showAddModel, setShowAddModel] = useState(false);
+  // Repo id to pre-fill the Add Model dialog with (set when opened from a
+  // recommended-model shortcut; empty when opened from the plain "Add model…").
+  const [addModelPrefill, setAddModelPrefill] = useState('');
   const [showBrainExplorer, setShowBrainExplorer] = useState(false);
   // null = unknown/loading, true/false = whether the root node is set up.
   const [brainInitialized, setBrainInitialized] = useState(null);
@@ -187,15 +190,9 @@ export default function App() {
     if (ok) chat.setIsResponding(false);
   };
 
-  // Returns true when a download started.
-  const handleDownloadRequest = (rawRepo) => {
-    const started = models.startDownload(rawRepo);
-    if (started) {
-      setShowAddModel(false);
-      alert(`Started downloading ${rawRepo} in the background.`);
-    }
-    return started;
-  };
+  // Returns true when a download started. The Add Model dialog stays open so
+  // its inline progress bar is visible.
+  const handleDownloadRequest = (repo, filename) => models.startDownload(repo, filename);
 
   // Scroll to bottom when returning to chat from the brain view.
   useEffect(() => {
@@ -279,6 +276,8 @@ export default function App() {
                 onStop={chat.stop}
                 isResponding={chat.isResponding}
                 attachments={attachments}
+                supportsVision={models.supportsVision}
+                supportsAudio={models.supportsAudio}
               />
             </>
           )}
@@ -286,6 +285,9 @@ export default function App() {
             open={showSettings}
             onClose={() => setShowSettings(false)}
             settings={settings}
+            downloads={models.downloads}
+            onCancelDownload={models.cancelDownload}
+            onRestartDownload={models.restartDownload}
             onReloadModel={handleReloadModel}
             onReset={() => {
               setBrainInitialized(false);
@@ -296,17 +298,27 @@ export default function App() {
               availableModels: models.availableModels,
               isChangingModel: models.isChangingModel,
               onSelectModel: handleSelectModel,
-              onAddModel: () => {
+              onAddModel: (prefill) => {
+                setAddModelPrefill(typeof prefill === 'string' ? prefill : '');
                 setShowAddModel(true);
               },
+              onDeleteModel: async (modelId) => {
+                const confirm = window.confirm(`Are you sure you want to completely erase the model "${modelId}" from your computer? This action cannot be undone.`);
+                if (!confirm) return;
+                await models.removeModel(modelId);
+              },
             }}
-            onRefreshModels={models.refreshModels}
           />
-          {models.isChangingModel && <ModelLoadingOverlay />}
+          {models.isChangingModel && <ModelLoadingOverlay isUnloading={models.changingToModel === 'none'} />}
           <AddModelModal
             open={showAddModel}
+            prefill={addModelPrefill}
             onClose={() => setShowAddModel(false)}
             onDownload={handleDownloadRequest}
+            downloads={models.downloads}
+            onDismissDownload={models.dismissDownload}
+            onCancelDownload={models.cancelDownload}
+            onRestartDownload={models.restartDownload}
           />
         </div>
       </div>
