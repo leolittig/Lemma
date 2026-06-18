@@ -425,9 +425,9 @@
 /* Assistant indicator layout classes */
 .assistant-layout-row {
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
   max-width: 100%;
 }
 
@@ -436,7 +436,8 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0.5rem;
-  max-width: calc(100% - 92px); /* 80px width + 12px gap */
+  max-width: 100%;
+  order: 1;
 }
 
 .assistant-indicator-container {
@@ -447,18 +448,25 @@
   align-items: center;
   justify-content: center;
   position: relative;
-  margin-bottom: 2px; /* align beautifully with bubble bottom */
+  margin-bottom: 0;
+  margin-left: 0.25rem;
   overflow: hidden; /* Crop edge artifacts */
   border-radius: 4px;
   box-shadow: none !important;
+  order: 2;
+}
+
+.assistant-indicator-container:empty {
+  display: none;
 }
 
 .assistant-indicator-gif,
 .assistant-indicator-static {
   width: 106%;
   height: 106%;
-  margin-top: 1.5rem;
-  margin-left: 1rem;
+  margin: -3%;
+  padding: 3%;
+  box-sizing: border-box;
   object-fit: contain;
   filter: url(#make-white-transparent); /* Remove white background using SVG color matrix */
   user-select: none;
@@ -502,6 +510,8 @@
   width: 106%;
   height: 106%;
   margin: -3%;
+  padding: 3%;
+  box-sizing: border-box;
   object-fit: contain;
   filter: url(#make-white-transparent); /* Remove white background using SVG color matrix */
   user-select: none;
@@ -550,39 +560,6 @@
     max-width: 90% !important;
   }
 
-  .assistant-layout-row {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 0.25rem !important;
-  }
-
-  .assistant-layout-column {
-    max-width: 100% !important;
-    order: 1 !important;
-  }
-
-  .assistant-indicator-container {
-    width: 80px !important;
-    height: 80px !important;
-    margin-bottom: 0 !important;
-    margin-left: 0.25rem !important;
-    order: 2 !important;
-    box-shadow: none !important;
-    overflow: visible !important;
-  }
-
-  .assistant-indicator-container:empty {
-    display: none !important;
-  }
-
-  .assistant-indicator-gif,
-  .assistant-indicator-static {
-    margin-top: 0 !important;
-    margin-left: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    box-shadow: none !important;
-  }
 
   #messages > div table {
     display: block !important;
