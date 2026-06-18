@@ -31,7 +31,10 @@ class ChatRequest(BaseModel):
     # split into head/middle/tail bands; when False it's a plain recency cut
     # that keeps only the most recent messages that fit.
     smart_context: Optional[bool] = True
-    enable_brain: Optional[bool] = True
+    # The memory brain is always active (it reads memory and injects context).
+    # When pause_brain is True it runs read-only: no memory writes after the
+    # turn — used for testing without mutating the graph.
+    pause_brain: Optional[bool] = False
 
 
 class ModelSelectRequest(BaseModel):
@@ -43,9 +46,18 @@ class ModelSelectRequest(BaseModel):
 
 
 class DownloadRequest(BaseModel):
-    """Body of POST /download — a Hugging Face repo id to fetch."""
+    """Body of POST /download — a Hugging Face repo id to fetch, optionally a
+    single GGUF file within it (a chosen quant variant)."""
 
     model: str
+    filename: Optional[str] = None
+
+
+class DownloadActionRequest(BaseModel):
+    """Body of POST /download/cancel and /download/restart — the download key
+    (a repo id, or "<repo>/<filename>" for a single GGUF variant)."""
+
+    key: str
 
 
 class ConversationCreateRequest(BaseModel):

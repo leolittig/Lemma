@@ -28,13 +28,28 @@ const postJSON = (url, body, options = {}) =>
 export async function fetchActiveModel() {
   const res = await fetch('/model');
   if (!res.ok) throw new Error('Model fetch failed');
-  return res.json(); // { model, supports_thinking }
+  return res.json(); // { model, supports_thinking, supports_vision, supports_audio }
 }
 
 export async function fetchModels() {
   const res = await fetch('/models');
   if (!res.ok) throw new Error('Models fetch failed');
-  return res.json(); // { models: [...] }
+  return res.json(); // { models: [{ id, label, format, engine, compatible }] }
+}
+
+// The selectable files in a Hugging Face repo: GGUF quant variants plus whether
+// it's an MLX (full-repo) download. Feeds the Add Model variant picker.
+export async function fetchRepoFiles(repo) {
+  const res = await fetch(`/models/repo_files?repo=${encodeURIComponent(repo)}`);
+  if (!res.ok) {
+    let msg = 'Could not read that repository.';
+    try {
+      const err = await res.json();
+      msg = err.message || err.detail || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json(); // { repo, is_mlx, gguf: [{filename, size}], mmproj: [...] }
 }
 
 // Switch to (or reload) a model. Also persists the default system prompt.
@@ -45,11 +60,26 @@ export async function selectModel(model, systemPrompt) {
   return res.ok ? res.json() : null;
 }
 
-// Ask the backend to start downloading a model from Hugging Face.
+// Delete a downloaded model from the disk.
+export async function deleteModel(modelId) {
+  const res = await fetch('/model', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Model deletion failed');
+  }
+  return res.json();
+}
+
+// Ask the backend to start downloading a model from Hugging Face. `filename`
+// selects one GGUF variant; omit it to download a whole (MLX) repo.
 // Returns { ok: true } or { ok: false, errorMessage } for API-level failures;
 // network failures throw (the caller turns those into an error status too).
-export async function startModelDownload(repo) {
-  const res = await postJSON('/download', { model: repo });
+export async function startModelDownload(repo, filename) {
+  const res = await postJSON('/download', { model: repo, filename: filename || null });
   if (res.ok) return { ok: true };
 
   // Pull the most useful error message out of whatever the server sent.
@@ -70,6 +100,16 @@ export async function startModelDownload(repo) {
 export async function fetchDownloadStatus() {
   const res = await fetch('/download/status');
   return res.json(); // { downloads: { [repo]: {status, progress, ...} } }
+}
+
+// Stop a download and delete its incomplete cache directory.
+export async function cancelDownload(key) {
+  await postJSON('/download/cancel', { key });
+}
+
+// Delete everything for a download and start it over from scratch.
+export async function restartDownload(key) {
+  await postJSON('/download/restart', { key });
 }
 
 // Conversations

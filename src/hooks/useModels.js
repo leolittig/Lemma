@@ -1,17 +1,21 @@
 // Everything about models: which one is active, which are available locally,
 // switching between them, and downloading new ones from Hugging Face.
 //
-// Download progress works by polling: starting a download seeds an entry in
-// `downloads`, and the polling effect below keeps refreshing all entries from
-// the backend until none is active anymore.
+// Available models are rich entries ({ id, label, format, engine, compatible })
+// so the picker can flag what this machine's engine can't run. Download progress
+// works by polling; the models list is refreshed only when a download finishes
+// (not on a timer), so opening Settings no longer hammers GET /models.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import * as api from '../api/client';
 import { INITIAL_MODEL_NAME } from '../constants';
 
 // Frontend-side sanitization of a Hugging Face repo id (the backend sanitizes
 // again); strips hidden or non-repo characters.
 const sanitizeRepoId = (raw) => raw.replace(/[^a-zA-Z0-9\-._/]/g, '').trim();
+
+// The status-map key a download is tracked under (matches the backend).
+const downloadKey = (repo, filename) => (filename ? `${repo}/${filename}` : repo);
 
 const downloadErrorStatus = (message) => ({
   status: 'error', progress: 0.0, downloaded_bytes: 0, total_bytes: 0, error_message: message,
@@ -20,10 +24,18 @@ const downloadErrorStatus = (message) => ({
 export function useModels() {
   const [modelName, setModelName] = useState(INITIAL_MODEL_NAME);
   const [supportsThinking, setSupportsThinking] = useState(true);
+  const [supportsVision, setSupportsVision] = useState(true);
+  const [supportsAudio, setSupportsAudio] = useState(true);
   const [availableModels, setAvailableModels] = useState([]);
-  const [isChangingModel, setIsChangingModel] = useState(false);
-  // Download progress per repo id, mirrored from GET /download/status.
+  const [changingToModel, setChangingToModel] = useState(null);
+  // Download progress per download key, mirrored from GET /download/status.
   const [downloads, setDownloads] = useState({});
+
+  const applyModelData = (data) => {
+    setSupportsThinking(data.supports_thinking !== false);
+    setSupportsVision(data.supports_vision !== false);
+    setSupportsAudio(data.supports_audio !== false);
+  };
 
   // Fetch the active model and the available models on mount, retrying every
   // 2s while the backend is still starting up (it loads a model before it
@@ -35,9 +47,9 @@ export function useModels() {
     const fetchInitialData = async () => {
       try {
         const modelData = await api.fetchActiveModel();
-        if (modelData.model && isMounted) {
-          setModelName(modelData.model);
-          setSupportsThinking(modelData.supports_thinking !== false);
+        if (modelData.model !== undefined && isMounted) {
+          setModelName(modelData.model || 'none');
+          applyModelData(modelData);
         }
 
         const modelsData = await api.fetchModels();
@@ -60,8 +72,17 @@ export function useModels() {
     };
   }, []);
 
+  const refreshModels = useCallback(async () => {
+    try {
+      const data = await api.fetchModels();
+      if (data.models) setAvailableModels(data.models);
+    } catch (err) {
+      console.error('Error updating models list:', err);
+    }
+  }, []);
+
   // While any download is active, poll its progress and refresh the models
-  // list when one completes.
+  // list once a download completes (the only time the list can change).
   useEffect(() => {
     const hasActive = Object.values(downloads).some((d) => d.status === 'downloading');
     if (!hasActive) return;
@@ -75,17 +96,11 @@ export function useModels() {
         if (!isMounted) return;
 
         if (data.downloads) {
-          setDownloads(data.downloads);
-
-          const completedNew = Object.entries(data.downloads).some(
-            ([repo, dl]) => dl.status === 'completed' && !availableModels.includes(repo)
+          const completed = Object.values(data.downloads).some(
+            (dl) => dl.status === 'completed'
           );
-          if (completedNew) {
-            const mData = await api.fetchModels();
-            if (mData.models && isMounted) {
-              setAvailableModels(mData.models);
-            }
-          }
+          setDownloads(data.downloads);
+          if (completed) refreshModels();
 
           const stillActive = Object.values(data.downloads).some(
             (d) => d.status === 'downloading'
@@ -106,33 +121,24 @@ export function useModels() {
       isMounted = false;
       clearTimeout(timeoutId);
     };
-  }, [availableModels, downloads]);
-
-  const refreshModels = async () => {
-    try {
-      const data = await api.fetchModels();
-      if (data.models) setAvailableModels(data.models);
-    } catch (err) {
-      console.error('Error updating models list:', err);
-    }
-  };
+  }, [downloads, refreshModels]);
 
   // Shared by selectModel and reloadModel: ask the backend to load `model`
   // (which also persists the default system prompt) and apply the result.
   // Returns true when the switch succeeded.
   const switchTo = async (model, systemPrompt) => {
-    setIsChangingModel(true);
+    setChangingToModel(model);
     try {
       const data = await api.selectModel(model, systemPrompt);
       if (!data) return false;
       setModelName(model);
-      setSupportsThinking(data.supports_thinking !== false);
+      applyModelData(data);
       return true;
     } catch (err) {
       console.error('Error changing model:', err);
       return false;
     } finally {
-      setIsChangingModel(false);
+      setChangingToModel(null);
     }
   };
 
@@ -140,7 +146,7 @@ export function useModels() {
   // conversation is intentionally kept — the chat continues on the new model,
   // re-templated server-side on the next message.
   const selectModel = async (model, systemPrompt) => {
-    if (model === modelName || isChangingModel) return false;
+    if (model === modelName || changingToModel !== null) return false;
     return switchTo(model, systemPrompt);
   };
 
@@ -148,58 +154,107 @@ export function useModels() {
   // when the target equals the current model, so it forces a fresh load,
   // applying the current default system prompt. The conversation is kept.
   const reloadModel = async (systemPrompt) => {
-    if (isChangingModel) return false;
+    if (changingToModel !== null) return false;
     return switchTo(modelName, systemPrompt);
   };
 
-  // Start downloading a model. Returns true when a download was started
-  // (i.e. the input was a plausible repo id). Synchronous on purpose: the
+  // Start downloading a model (whole repo, or one GGUF variant via `filename`).
+  // Returns true when a download was started. Synchronous on purpose: the
   // placeholder entry below kicks off the polling effect; errors from the
   // actual request are folded into that entry as they arrive.
-  const startDownload = (rawRepo) => {
+  const startDownload = (rawRepo, filename) => {
     const repo = sanitizeRepoId(rawRepo);
     if (!repo) return false;
+    const key = downloadKey(repo, filename);
 
     // Seed a placeholder entry so the UI shows progress immediately and the
     // polling effect starts running.
     setDownloads((prev) => ({
       ...prev,
-      [repo]: { status: 'downloading', progress: 0.0, downloaded_bytes: 0, total_bytes: 0, error_message: '' },
+      [key]: { status: 'downloading', progress: 0.0, downloaded_bytes: 0, total_bytes: 0, error_message: '' },
     }));
 
     (async () => {
       try {
-        const result = await api.startModelDownload(repo);
+        const result = await api.startModelDownload(repo, filename);
         if (!result.ok) {
-          setDownloads((prev) => ({ ...prev, [repo]: downloadErrorStatus(result.errorMessage) }));
+          setDownloads((prev) => ({ ...prev, [key]: downloadErrorStatus(result.errorMessage) }));
         }
       } catch (err) {
-        setDownloads((prev) => ({ ...prev, [repo]: downloadErrorStatus(err.message || 'Failed to connect.') }));
+        setDownloads((prev) => ({ ...prev, [key]: downloadErrorStatus(err.message || 'Failed to connect.') }));
       }
     })();
 
     return true;
   };
 
-  // Remove a failed download's entry from the list (the ✕ button).
-  const dismissDownload = (repo) => {
+  // Remove a failed/finished download's entry from the list (the ✕ button).
+  const dismissDownload = (key) => {
     setDownloads((prev) => {
       const copy = { ...prev };
-      delete copy[repo];
+      delete copy[key];
       return copy;
     });
+  };
+
+  // Cancel an in-flight download: stop it, delete its partial files, and drop
+  // its entry from the list.
+  const cancelDownload = async (key) => {
+    try {
+      await api.cancelDownload(key);
+    } catch (err) {
+      console.error('Error cancelling download:', err);
+    }
+    dismissDownload(key);
+  };
+
+  // Restart a download from scratch: wipe what's on disk and re-seed the
+  // placeholder so the polling effect picks it back up.
+  const restartDownload = async (key) => {
+    setDownloads((prev) => ({
+      ...prev,
+      [key]: { status: 'downloading', progress: 0.0, downloaded_bytes: 0, total_bytes: 0, error_message: '' },
+    }));
+    try {
+      await api.restartDownload(key);
+    } catch (err) {
+      setDownloads((prev) => ({ ...prev, [key]: downloadErrorStatus(err.message || 'Failed to restart.') }));
+    }
+  };
+
+  // Delete a model from disk and refresh the list.
+  const removeModel = async (modelId) => {
+    try {
+      await api.deleteModel(modelId);
+      await refreshModels();
+      // If we deleted the currently active model, switch to 'none'
+      if (modelId === modelName) {
+        setModelName('none');
+      }
+      return true;
+    } catch (err) {
+      console.error('Error deleting model:', err);
+      alert(`Failed to delete model: ${err.message}`);
+      return false;
+    }
   };
 
   return {
     modelName,
     supportsThinking,
+    supportsVision,
+    supportsAudio,
     availableModels,
-    isChangingModel,
+    isChangingModel: changingToModel !== null,
+    changingToModel,
     downloads,
     refreshModels,
     selectModel,
     reloadModel,
     startDownload,
     dismissDownload,
+    cancelDownload,
+    restartDownload,
+    removeModel,
   };
 }
