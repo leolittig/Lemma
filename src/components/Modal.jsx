@@ -7,7 +7,7 @@
 
 import React, { useRef } from 'react';
 
-export default function Modal({ title, open, onClose, children }) {
+export default function Modal({ title, open, onClose, children, className = '' }) {
   const mouseDownOnOverlayRef = useRef(false);
 
   const handleMouseDown = (e) => {
@@ -26,7 +26,7 @@ export default function Modal({ title, open, onClose, children }) {
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
     >
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`settings-modal ${className}`} onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h3 className="settings-title">{title}</h3>
           <button className="close-btn" onClick={onClose} aria-label="Close">
