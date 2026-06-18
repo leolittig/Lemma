@@ -1,23 +1,23 @@
 """POST /chat — the heart of the app: generate a streamed model reply.
 
 What one request does, in order:
-  1. Check if the memory brain is enabled in the request (`enable_brain`).
-  2. Run brain pre-analysis to identify relevant memory files (_run_routing).
-  3. Inject the Assistant.md persona + retrieved memory into the system
+  1. Run brain pre-analysis to identify relevant memory files (_run_routing).
+  2. Inject the Assistant.md persona + retrieved memory into the system
      prompt (_build_system_prompt).
-  4. Persist the user's message (_save_user_turn) and build the prompt,
+  3. Persist the user's message (_save_user_turn) and build the prompt,
      trimming it to the context budget if needed (context_window).
-  5. Stream the reply to the client as plain text (_generate), optionally
+  4. Stream the reply to the client as plain text (_generate), optionally
      filtering out the reasoning phase (thinking.py), then persist it with
      its brain_activity record.
-  6. Kick off a background thread where the brain manager updates the
-     memory graph (_run_post_processing).
+  5. Kick off a background thread where the brain manager updates the
+     memory graph (_run_post_processing) — UNLESS the request set `pause_brain`,
+     in which case the brain stays read-only and this write step is skipped.
 
 Metadata travels in response headers because the body is reserved for the raw
 text stream: X-Context-Trimmed / X-Context-Out-Ranges for trimming, and
 X-Brain-Activity for the routing info shown live in the UI.
 
-Every MLX generation here (routing, chat, post-processing) holds
+Every generation here (routing, chat, post-processing) holds
 model_manager.generation_lock — see that module for why.
 """
 
@@ -27,11 +27,8 @@ import re
 import threading
 from datetime import datetime
 
-import mlx.core as mx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from mlx_vlm.generate import stream_generate
-from mlx_vlm.prompt_utils import apply_chat_template
 
 from .. import config, thinking
 from ..context_window import build_prompt
@@ -66,10 +63,11 @@ async def chat(msg: ChatRequest, request: Request):
             status_code=404,
             content={"status": "error", "message": "Conversation not found"})
 
-    # Resolve if the brain is enabled. If enabled, run routing pre-analysis.
-    # Both touch MLX, so they hold the generation lock.
-    brain_enabled = msg.enable_brain if msg.enable_brain is not None else True
-    brain_mode = "active" if brain_enabled else None
+    # The brain is always active: routing pre-analysis runs and memory is
+    # injected into the prompt. `pause_brain` makes it read-only — the memory
+    # graph is still read for context, but not written to after the turn.
+    brain_mode = "active"
+    brain_writes = not bool(msg.pause_brain)
 
     await acquire_generation_lock()
     try:
@@ -79,30 +77,27 @@ async def chat(msg: ChatRequest, request: Request):
     finally:
         generation_lock.release()
 
-    chat_model = manager.model
-    chat_processor = manager.processor
-    chat_path = manager.path
-
-    if not chat_model or not chat_processor:
+    engine = manager.engine
+    if engine is None or not manager.is_loaded:
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "message": f"Chat model ({chat_path}) is not loaded."})
+            content={"status": "error", "message": f"Chat model ({manager.path}) is not loaded."})
 
     system_prompt = _build_system_prompt(
         conv.get("system_prompt") or "", brain_mode,
-        routing["files_to_read"] if routing else [])
+        routing["files_to_read"] if routing else [], brain_writes)
 
     history = _save_user_turn(conv, msg)
 
-    # Only THIS turn's media is fed to the model — apply_chat_template places
-    # media tokens in the last user message, so prior-turn media isn't re-sent.
-    image_paths = _media_paths(msg.attachments, "image")
-    audio_paths = _media_paths(msg.attachments, "audio")
+    # Only THIS turn's media is fed to the model — the chat template places media
+    # tokens in the last user message, so prior-turn media isn't re-sent. Media
+    # the active engine can't handle (e.g. audio on llama.cpp) is dropped.
+    image_paths = _media_paths(msg.attachments, "image") if engine.supports_vision() else []
+    audio_paths = _media_paths(msg.attachments, "audio") if engine.supports_audio() else []
 
     formatted, trimmed, out_ranges = build_prompt(
-        chat_model, chat_processor,
-        history, system_prompt,
-        len(image_paths), len(audio_paths), _prompt_budget(msg),
+        engine, history, system_prompt,
+        image_paths, audio_paths, _prompt_budget(msg),
         enable_thinking=msg.enable_thinking,
         smart=msg.smart_context is not False,
     )
@@ -119,8 +114,8 @@ async def chat(msg: ChatRequest, request: Request):
     stream = _generate(request, msg.conversation_id, formatted,
                        image_paths, audio_paths, _generation_kwargs(msg),
                        strip_thinking=msg.enable_thinking is False,
-                       chat_model=chat_model, chat_processor=chat_processor,
                        brain_mode=brain_mode,
+                       brain_writes=brain_writes,
                        brain_activity=brain_activity,
                        user_text=msg.text)
     headers = _context_headers(msg.conversation_id, trimmed, out_ranges)
@@ -129,16 +124,6 @@ async def chat(msg: ChatRequest, request: Request):
         # non-ASCII, which keeps the header value transport-safe.
         headers["X-Brain-Activity"] = json.dumps(brain_activity)
     return StreamingResponse(stream, media_type="text/plain", headers=headers)
-
-
-def _routing_model_path(mode: str) -> str:
-    """Which model does pre-analysis and post-processing. With single model setups this is always manager.path."""
-    return manager.path
-
-
-def _chat_model_path(mode: str) -> str:
-    """Which model streams the chat reply. With single model setups this is always manager.path."""
-    return manager.path
 
 
 def _load_brain_map(mode: str) -> str:
@@ -177,10 +162,7 @@ def _run_routing(user_text: str, mode: str) -> dict:
     """
     result = {"reasoning": "", "files_to_read": []}
 
-    model_path = _routing_model_path(mode)
-    model = manager.get_model(model_path)
-    processor = manager.get_processor(model_path)
-    if not model or not processor:
+    if not manager.is_loaded:
         return result
 
     now = datetime.now().strftime("%A, %Y-%m-%d %H:%M")
@@ -196,7 +178,7 @@ def _run_routing(user_text: str, mode: str) -> dict:
     )
 
     try:
-        raw = _generate_once(model, processor, prompt, max_tokens=200)
+        raw = _generate_once(prompt, max_tokens=200)
         # The model may wrap the JSON in prose or ```json fencing.
         json_match = re.search(r'\{.*\}', raw, re.DOTALL)
         if json_match:
@@ -210,32 +192,29 @@ def _run_routing(user_text: str, mode: str) -> dict:
     return result
 
 
-def _generate_once(model, processor, prompt: str, max_tokens: int, on_token=None) -> str:
-    """One completion for the internal brain calls.
+def _generate_once(prompt: str, max_tokens: int, on_token=None) -> str:
+    """One completion for the internal brain calls, on the active engine.
 
     `on_token`, when given, is called with each chunk's text as it streams —
     used to surface the memory model's live output to the UI. It is a passive
     observer; the returned text and everything else is unchanged.
     """
-    seq = [{"role": "user", "content": prompt}]
-    formatted = apply_chat_template(processor, model.config, seq)
+    engine = manager.engine
+    chunks = []
     try:
-        chunks = []
-        for chunk in stream_generate(
-                model, processor, formatted,
-                max_tokens=max_tokens, max_kv_size=INTERNAL_MAX_KV):
-            chunks.append(chunk.text)
+        for text in engine.complete_stream(prompt, max_tokens=max_tokens,
+                                            max_kv_size=INTERNAL_MAX_KV):
+            chunks.append(text)
             if on_token:
-                on_token(chunk.text)
+                on_token(text)
     finally:
-        # Free the generation's GPU buffers right away — with two models
-        # resident, leftover caches from consecutive generations are what
-        # pushes Metal out of memory.
-        mx.clear_cache()
+        # Free the generation's transient buffers right away — leftover caches
+        # from consecutive generations are what push Metal out of memory.
+        engine.clear_cache()
     return thinking.strip_thinking("".join(chunks).strip()).strip()
 
 
-def _build_system_prompt(conv_system_prompt: str, brain_mode, files_to_read: list) -> str:
+def _build_system_prompt(conv_system_prompt: str, brain_mode, files_to_read: list, brain_writes: bool) -> str:
     """Combine the conversation system prompt with the Assistant.md persona
     and any retrieved memory file contents. Prepend current date/time (including day of week)."""
     now_dt = datetime.now()
@@ -270,6 +249,10 @@ def _build_system_prompt(conv_system_prompt: str, brain_mode, files_to_read: lis
     # 4. Original conversation system prompt.
     if conv_system_prompt:
         parts.append(conv_system_prompt)
+
+    # 5. System Note about brain writing being disabled (overrides Persona)
+    if not brain_writes:
+        parts.append("[System Note]\nCRITICAL: Brain writing is currently PAUSED. No new memories will be recorded. OVERRIDE ANY PREVIOUS INSTRUCTIONS ABOUT SAVING MEMORIES AUTOMATICALLY. If the user asks you to remember, register, note, or save something, you MUST explicitly inform them that you cannot do so because brain writing is paused/disabled in the settings.")
 
     return "\n\n".join(parts)
 
@@ -381,10 +364,7 @@ def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
     commands (=== CREATE/UPDATE/DELETE file.md ===) that are executed on the
     active brain folder.
     """
-    model_path = _routing_model_path(mode)
-    model = manager.get_model(model_path)
-    processor = manager.get_processor(model_path)
-    if not model or not processor:
+    if not manager.is_loaded:
         return
 
     manual = _get_manual_for_turn(
@@ -431,7 +411,7 @@ def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
     try:
         with generation_lock:
             response_text = _generate_once(
-                model, processor, prompt, max_tokens=3000,
+                prompt, max_tokens=3000,
                 on_token=storage_brain.append_stream)
     except Exception as e:
         print(f"Post-processing generation error: {e}")
@@ -595,10 +575,7 @@ def _run_title_generation(cid: str):
         if not messages:
             return
 
-        model_path = manager.path
-        model = manager.get_model(model_path)
-        processor = manager.get_processor(model_path)
-        if not model or not processor:
+        if not manager.is_loaded:
             return
 
         # Format conversation history
@@ -635,7 +612,7 @@ def _run_title_generation(cid: str):
         )
 
         with generation_lock:
-            response_text = _generate_once(model, processor, prompt, max_tokens=150)
+            response_text = _generate_once(prompt, max_tokens=150)
 
         data = parse_json_from_response(response_text)
         if data and isinstance(data, dict):
@@ -654,8 +631,8 @@ def _run_title_generation(cid: str):
 
 
 async def _generate(request, cid, formatted, image_paths, audio_paths,
-                    gen_kwargs, strip_thinking, chat_model, chat_processor,
-                    brain_mode, brain_activity, user_text):
+                    gen_kwargs, strip_thinking,
+                    brain_mode, brain_writes, brain_activity, user_text):
     """Stream the model's reply, persist it, then start the brain update.
 
     When the chat template left a thinking block open, the model's first
@@ -664,7 +641,8 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
     user turned thinking off but the model reasons anyway: the reasoning is
     removed from both the stream and what's stored.
     """
-    thinking_open, thinking_tag = thinking.find_open_thinking(formatted)
+    engine = manager.engine
+    thinking_open, thinking_tag = engine.prompt_open_thinking(formatted)
 
     raw = ""        # everything the model produced (plus any tag we prepend)
     emitted = 0     # chars of the *visible* text already sent to the client
@@ -675,13 +653,10 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
 
     await acquire_generation_lock()
     try:
-        for chunk in stream_generate(
-            chat_model, chat_processor, formatted,
-            image=image_paths or None,
-            audio=audio_paths or None,
-            **gen_kwargs,
+        for text in engine.stream(
+            formatted, image_paths or None, audio_paths or None, **gen_kwargs,
         ):
-            raw += chunk.text
+            raw += text
             if strip_thinking:
                 # Emit the cleaned answer incrementally, holding back the last
                 # few chars so a tag split across chunks ("</thi" | "nk>") is
@@ -692,16 +667,16 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
                     yield visible[emitted:safe_len]
                     emitted = safe_len
             else:
-                yield chunk.text
+                yield text
             # If the client hit Stop (aborted the fetch), end generation now —
             # otherwise we'd keep writing to a dead socket and block the event
             # loop from serving the next message.
             if await request.is_disconnected():
                 break
     finally:
-        # Free this generation's GPU buffers before the next one (see
-        # _generate_once for why this matters in dual-model modes).
-        mx.clear_cache()
+        # Free this generation's transient buffers before the next one (see
+        # _generate_once for why this matters when memory is tight).
+        engine.clear_cache()
         generation_lock.release()
 
     # Flush any held-back tail and settle the stored text.
@@ -720,8 +695,9 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
     # Update the memory graph in a background thread so the response isn't
     # held open. (FastAPI's BackgroundTasks can't be used inside a streaming
     # generator — the generator IS the response.) The thread serializes its
-    # generation through generation_lock.
-    if brain_mode:
+    # generation through generation_lock. Skipped when the brain is paused
+    # (read-only mode), so memory is never mutated.
+    if brain_mode and brain_writes:
         profile = config.active_profile.get()
         threading.Thread(
             target=_run_post_processing,

@@ -17,51 +17,48 @@ Either way, whole messages are kept or dropped (never split), and the caller
 gets back the index ranges that fell out so the UI can dim those messages.
 """
 
-from mlx_vlm.prompt_utils import apply_chat_template
-
 from .config import HEAD_SHARE, MIDDLE_SHARE, TAIL_SHARE, PER_MESSAGE_OVERHEAD
 
 
-def build_prompt(model, processor, messages, system_prompt,
-                 num_images, num_audios, budget,
+def build_prompt(engine, messages, system_prompt,
+                 image_paths, audio_paths, budget,
                  enable_thinking=None, smart=True):
-    """Format the conversation for the model, trimming it when over budget.
+    """Format the conversation for the engine, trimming it when over budget.
 
     Arguments:
+        engine           The active inference engine (server/engines); it owns
+                         chat-templating and token counting for both backends.
         messages         Full history as [{"role", "text", ...}], the current
                          user turn last.
+        image_paths /    Media for the current turn (placed on the last user
+        audio_paths      message by the engine's chat template).
         budget           Max prompt tokens; None or 0 disables trimming.
         enable_thinking  Forwarded to the chat template when not None
                          (toggles the reasoning phase on models that support it).
         smart            True = three-band trimming, False = recency cut.
 
-    Returns (formatted_str, trimmed, out_ranges) where out_ranges is a list of
-    [start, end) message-index ranges that fell out of context.
+    Returns (formatted, trimmed, out_ranges): `formatted` is the engine's opaque
+    prompt object, and out_ranges is a list of [start, end) message-index ranges
+    that fell out of context.
     """
-    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
-    extra = {} if enable_thinking is None else {"enable_thinking": enable_thinking}
-
     def fmt(msgs):
-        seq = [{"role": "system", "content": system_prompt}] if system_prompt else []
-        seq += [{"role": m["role"], "content": m["text"]} for m in msgs]
-        return apply_chat_template(
-            processor, model.config, seq,
-            num_images=num_images, num_audios=num_audios, **extra)
+        return engine.format_chat(msgs, system_prompt, image_paths, audio_paths,
+                                  enable_thinking)
 
-    def token_count(text):
-        return len(tokenizer.encode(text))
+    def prompt_tokens(prompt):
+        return engine.count_prompt_tokens(prompt)
 
     # The common case: everything fits, nothing to do.
     formatted = fmt(messages)
-    if not budget or token_count(formatted) <= budget:
+    if not budget or prompt_tokens(formatted) <= budget:
         return formatted, False, []
 
     if not smart:
-        return _recency_cut(messages, fmt, token_count, budget)
+        return _recency_cut(messages, fmt, prompt_tokens, budget)
 
     # Per-message token cost, including the template's wrapping overhead.
-    msg_tok = [token_count(m["text"]) + PER_MESSAGE_OVERHEAD for m in messages]
-    sys_tok = (token_count(system_prompt) if system_prompt else 0) + PER_MESSAGE_OVERHEAD
+    msg_tok = [engine.count_tokens(m["text"]) + PER_MESSAGE_OVERHEAD for m in messages]
+    sys_tok = (engine.count_tokens(system_prompt) if system_prompt else 0) + PER_MESSAGE_OVERHEAD
 
     kept = [False] * len(messages)
     tail_start = _fill_tail(kept, msg_tok, TAIL_SHARE * budget)

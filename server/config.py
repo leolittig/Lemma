@@ -81,15 +81,28 @@ def __getattr__(name: str):
 # Hugging Face stores downloaded models here; we scan it to list local models.
 HF_CACHE_DIR = Path.home() / ".cache" / "huggingface" / "hub"
 
+# Remembers the last model the user loaded, so the server reloads it on the
+# next start instead of the default. Global (not profile-scoped): there is a
+# single shared model manager. See model_manager.load_initial.
+LAST_MODEL_FILE = PROJECT_ROOT / "last_model.txt"
+
 # Always offered in the model picker, even before it has been downloaded.
 DEFAULT_MODEL = "mlx-community/gemma-4-12B-it-8bit"
 
 # Used as the load target only when no model exists in the cache at all.
 FALLBACK_MODEL = "mlx-community/gemma-4-e4b-it-4bit"
 
-# Generation defaults, used when the client doesn't send a value.
+# Generation defaults, used when the client doesn't send a value. These mirror
+# the frontend defaults (see src/constants.js): temperature 1.0, and an
+# unlimited response length (0 disables the cap).
 DEFAULT_TEMPERATURE = 1.0
-DEFAULT_MAX_TOKENS = 2048
+DEFAULT_MAX_TOKENS = 0
+
+# llama.cpp fixes the context window (n_ctx) at load time, unlike MLX which
+# caps the KV cache per generation. We load GGUF models with this generous cap
+# and rely on prompt trimming (context_window.py, driven by the Context Window
+# slider) to stay within it.
+LLAMA_N_CTX = 8192
 
 # Context-window trimming (see context_window.py for how these are applied).
 # RESPONSE_HEADROOM: fraction of the window the prompt may use; the rest is
