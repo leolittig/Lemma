@@ -1,6 +1,6 @@
 # Web server
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic            # request/response schemas (also pulled in by fastapi)
 python-multipart    # required by FastAPI for file uploads (the /upload endpoint)
 
