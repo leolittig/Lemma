@@ -33,9 +33,14 @@ button.attach-btn {
   box-shadow: none;
 }
 
-button.attach-btn:hover {
+button.attach-btn:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.05);
   color: #1a1a1a;
+}
+
+button.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* The "Thinking" label next to the on/off switch. */
