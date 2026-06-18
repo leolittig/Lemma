@@ -1,12 +1,14 @@
 # Lemma
 
-A lightweight local LLM chat interface optimized for Apple Silicon using MLX, React, and Vite.
+A lightweight local LLM chat interface, using React and Vite, that runs models
+locally through one of two interchangeable engines: **MLX** on Apple Silicon
+macOS, and **llama.cpp** (GGUF models) on Windows, Linux, and macOS.
 
 ## How it works
 
 Lemma is two programs that talk over HTTP:
 
-1. **Backend** (`server/`, started by [app.py](app.py)) — a Python FastAPI server that loads an MLX model into memory, streams generated replies, manages model downloads from Hugging Face, and persists conversations in SQLite.
+1. **Backend** (`server/`, started by [app.py](app.py)) — a Python FastAPI server that loads a model into memory through an inference engine (`server/engines/`: MLX or llama.cpp, chosen by the model's format), streams generated replies, manages model downloads from Hugging Face, and persists conversations in SQLite.
 2. **Frontend** (`src/`) — a React app that renders the chat, reads the reply stream token by token, and renders Markdown, code, and LaTeX math (via `marked` + KaTeX).
 
 In development, Vite serves the frontend on port 5173 and proxies API calls to the backend on port 8000 (see [vite.config.js](vite.config.js)). In production, the backend serves the built frontend itself.
@@ -26,6 +28,21 @@ source .venv/bin/activate
 pip install -r requirements.txt
 npm install
 ```
+
+**Engines.** `requirements.txt` installs the right inference backend for your
+platform:
+
+* **MLX** (`mlx`, `mlx-vlm`) is installed only on macOS — it's the default
+  engine on Apple Silicon and supports text, image, and audio input.
+* **llama.cpp** (`llama-cpp-python`) is installed everywhere and runs GGUF
+  models. It's the default off macOS. Text and (for GGUF models that ship an
+  `mmproj` projector) image input are supported; audio is not.
+
+`llama-cpp-python` ships prebuilt wheels for most platforms but may build from
+source — that needs a C/C++ toolchain and CMake. To target a specific GPU
+backend, set `CMAKE_ARGS` before installing, e.g. `CMAKE_ARGS="-DGGML_CUDA=on"`
+(CUDA) or `CMAKE_ARGS="-DGGML_METAL=on"` (Metal); see the
+[llama-cpp-python docs](https://github.com/abetlen/llama-cpp-python#installation).
 
 ### 3. Run the app
 
@@ -49,7 +66,7 @@ Then open `http://127.0.0.1:8000`.
 ## Features
 
 * **Conversation sidebar** — history is saved locally in SQLite; rename, delete, and switch chats from the sidebar.
-* **Model management** — pick any downloaded model from the top-bar dropdown, or download a new one by entering a Hugging Face repo id. Switching unloads the old model and clears the MLX GPU cache to free memory.
+* **Model management** — pick any downloaded model from the dropdown (each tagged with its engine, and flagged when this machine can't run it), or add a new one by entering a Hugging Face repo id: Lemma lists the repo's GGUF quant variants (and MLX full-repo option) so you can choose one, and shows a real progress bar while it downloads. Switching unloads the old model and frees its memory.
 * **Thinking models** — reasoning models (Qwen 3, Gemma 4, …) get a Thinking toggle; the reasoning stream is parsed and shown in a collapsible block above the answer.
 * **Context & token management** — sliders cap the response length and the context (history) sent to the model. The "smart context window" keeps the start, a middle slice, and the most recent turns of an over-long chat, and the UI dims the messages that fell out.
 * **Attachments** — send images and audio to vision/audio-capable models.
@@ -66,13 +83,18 @@ Lemma/
 │   ├── main.py                  Assembles the FastAPI app from the modules below
 │   ├── config.py                ALL paths and tunable constants
 │   ├── schemas.py               Shapes of the JSON request bodies (API contract)
-│   ├── model_manager.py         The loaded model(s): loading, swapping, brain modes
-│   ├── model_catalog.py         Lists models already in the Hugging Face cache
-│   ├── model_downloads.py       Background downloads + progress tracking
+│   ├── model_manager.py         The active engine: loading, swapping, capabilities
+│   ├── model_catalog.py         Lists local models (MLX + GGUF) with compatibility
+│   ├── model_downloads.py       Background downloads (repo or GGUF file) + progress
 │   ├── context_window.py        Trims long conversations to the token budget
 │   ├── thinking.py              Reasoning (<think>) tag detection/stripping
 │   ├── system_prompt.py         Persists the default system prompt
 │   ├── mlx_compat.py            Workaround for checkpoints with extra tensors
+│   ├── engines/                 Inference backends behind one interface
+│   │   ├── base.py              The Engine interface (format, count, stream, …)
+│   │   ├── mlx_engine.py        MLX (mlx-vlm) — Apple Silicon
+│   │   ├── llama_engine.py      llama.cpp (llama-cpp-python) — GGUF, cross-platform
+│   │   └── __init__.py          Engine selection (by model format / platform)
 │   ├── brain/
 │   │   └── instructions/        Modular instructions (general, people, calendar, etc.)
 │   ├── storage/
@@ -81,7 +103,7 @@ Lemma/
 │   │   └── brain.py             Brain memory files: seeding, parsing, validation
 │   └── routes/                  One file per API area, each exposing a router
 │       ├── chat.py              POST /chat — routing, generation, brain updates
-│       ├── models.py            /model, /models, /download
+│       ├── models.py            /model, /models(+/repo_files), /download
 │       ├── conversations.py     /conversations CRUD
 │       ├── brain.py             /api/brain/* — graph, file CRUD, mode switch
 │       ├── files.py             /upload

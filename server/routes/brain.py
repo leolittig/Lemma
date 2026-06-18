@@ -143,7 +143,8 @@ async def set_brain_mode(req: BrainModeRequest):
     finally:
         generation_lock.release()
 
-    return {"status": "ok", "mode": req.mode, "active_models": list(manager._models.keys())}
+    active_models = [manager.path] if manager.path else []
+    return {"status": "ok", "mode": req.mode, "active_models": active_models}
 
 
 @router.post("/api/brain/file")

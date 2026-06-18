@@ -5,6 +5,11 @@
 import React, { useRef, useEffect } from 'react';
 import { adjustTextareaHeight } from '../lib/textarea';
 
+// Build the file-picker `accept` list and the attach button's tooltip from
+// what the active engine can take (llama.cpp models, for instance, take images
+// only with an mmproj and never take audio).
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/bmp';
+
 export default function Composer({
   inputText,
   onInputChange,
@@ -12,12 +17,27 @@ export default function Composer({
   onStop,          // aborts the in-flight response
   isResponding,
   attachments,     // from useAttachments
+  supportsVision = true,
+  supportsAudio = true,
 }) {
   const textareaRef = useRef(null);
 
   useEffect(() => {
     adjustTextareaHeight(textareaRef.current);
   }, [inputText]);
+
+  const acceptTypes = [
+    supportsVision ? IMAGE_ACCEPT : '',
+    supportsAudio ? 'audio/*' : '',
+  ].filter(Boolean).join(',');
+  const canAttach = supportsVision || supportsAudio;
+  const attachLabel = !canAttach
+    ? "This model doesn't support attachments"
+    : supportsVision && supportsAudio
+      ? 'Attach image or audio'
+      : supportsVision
+        ? 'Attach image (this model has no audio support)'
+        : 'Attach audio';
 
   // Enter sends; Shift+Enter inserts a newline.
   const handleKeyDown = (e) => {
@@ -60,12 +80,19 @@ export default function Composer({
         <input
           ref={attachments.fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,audio/*"
+          accept={acceptTypes}
           multiple
           style={{ display: 'none' }}
           onChange={attachments.onFileSelect}
         />
-        <button type="button" className="attach-btn" onClick={attachments.openFilePicker} aria-label="Attach image or audio">
+        <button
+          type="button"
+          className="attach-btn"
+          onClick={attachments.openFilePicker}
+          disabled={!canAttach}
+          title={attachLabel}
+          aria-label={attachLabel}
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
           </svg>

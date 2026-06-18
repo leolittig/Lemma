@@ -1,11 +1,12 @@
 """Assembles the FastAPI application.
 
 Everything happens in a fixed order:
-  1. Install the MLX weight-loading workaround (must precede any model load).
-  2. Load the initial model. This blocks until the model is in memory, so the
+  1. Load the initial model. This blocks until the model is in memory, so the
      server never answers requests in a half-ready state. (If no cached model
-     loads, the server still starts and the UI prompts for a model.)
-  3. Create the app, initialise storage, and wire up every route module.
+     loads, the server still starts and the UI prompts for a model.) The chosen
+     engine (MLX or llama.cpp) installs any backend-specific workarounds when it
+     is constructed — see server/engines/.
+  2. Create the app, initialise storage, and wire up every route module.
 
 To add a new API area: create a module in routes/ exposing a `router`, then
 include it below.
@@ -16,7 +17,6 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from . import config
-from .mlx_compat import install_lenient_weight_loading
 from .model_manager import manager
 from .routes import chat, conversations, files, frontend, models, brain
 from .storage import database, uploads
@@ -26,7 +26,6 @@ import re
 from fastapi import Request, HTTPException
 from fastapi.responses import FileResponse
 
-install_lenient_weight_loading()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
