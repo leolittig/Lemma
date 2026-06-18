@@ -1,11 +1,16 @@
+# Web server
 fastapi
 uvicorn
+pydantic            # request/response schemas (also pulled in by fastapi)
+python-multipart    # required by FastAPI for file uploads (the /upload endpoint)
+
+# Hugging Face model downloads
 huggingface-hub
-aiofiles
-# MLX is Apple-Silicon only; it's the default engine on macOS.
+
+# Inference engines (an engine is chosen per model from its format)
+# MLX — Apple Silicon only; the default engine on macOS. Supports text, image
+# and audio input. mlx-vlm>=0.6.3 adds the diffusion_gemma architecture.
 mlx; sys_platform == 'darwin'
-# 0.6.3 adds the diffusion_gemma architecture (DiffusionGemma block-diffusion
-# models); earlier versions fail to load them.
 mlx-vlm>=0.6.3; sys_platform == 'darwin'
-# llama.cpp runs GGUF models everywhere (the default engine off macOS).
+# llama.cpp — runs GGUF models everywhere; the default engine off macOS.
 llama-cpp-python
