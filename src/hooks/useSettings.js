@@ -63,6 +63,11 @@ export function useSettings() {
   const [detailedLogs, setDetailedLogs] = usePersistentState(
     'detailed_logs', loadBool(false), saveBool);
 
+  // Debug mode: opens a floating window streaming every token the model sees
+  // and produces (routing, chat, thinking, post-processing, title).
+  const [debugMode, setDebugMode] = usePersistentState(
+    'debug_mode', loadBool(false), saveBool);
+
   return {
     systemPrompt, setSystemPrompt,
     temperature, setTemperature,
@@ -74,5 +79,6 @@ export function useSettings() {
     brainEnabled, setBrainEnabled,
     pauseBrainWriting, setPauseBrainWriting,
     detailedLogs, setDetailedLogs,
+    debugMode, setDebugMode,
   };
 }

@@ -15,6 +15,7 @@ export default function MessageList({
   scroll,           // from useAutoScroll: containerRef + event handlers
   onThinkingOpened,
   userName,
+  liveRoutingFiles, // files routing is reading, live, for the in-flight turn
 }) {
   // Measure the OS scrollbar width once and expose it as a CSS variable, so the
   // bottom fade overlay can inset its right edge to avoid painting over the
@@ -69,6 +70,7 @@ export default function MessageList({
                 fullyOut={fullyOut}
                 registerRef={registerMessageRef}
                 onThinkingOpened={onThinkingOpened}
+                liveRoutingFiles={index === lastAssistantMsgIndex && isResponding ? liveRoutingFiles : null}
               />
             );
           })

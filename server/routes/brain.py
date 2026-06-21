@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from ..model_manager import manager, generation_lock, acquire_generation_lock
 from ..storage import brain as storage_brain
+from .. import debug as debug_tap
 
 
 class ConnectionManager:
@@ -63,6 +64,8 @@ class ConnectionManager:
 
 ws_manager = ConnectionManager()
 storage_brain.register_listener(ws_manager.send_notification)
+# Let the debug tap broadcast over the same WebSocket.
+debug_tap.set_emitter(ws_manager.send_notification)
 
 router = APIRouter()
 
@@ -77,6 +80,17 @@ async def websocket_endpoint(websocket: WebSocket):
         ws_manager.disconnect(websocket)
     except Exception:
         ws_manager.disconnect(websocket)
+
+
+class DebugToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/api/debug/toggle")
+async def toggle_debug(req: DebugToggleRequest):
+    """Turn the model debug tap on/off (drives the floating debug window)."""
+    debug_tap.set_enabled(req.enabled)
+    return {"status": "ok", "enabled": req.enabled}
 
 
 class BrainModeRequest(BaseModel):
@@ -361,7 +375,7 @@ async def get_graph(mode: str = Query(default=None)):
             data = nodes_data[stem]
             nodes.append({
                 "id": stem,
-                "label": data["title"] or stem,
+                "label": (data["title"] or stem).replace("_", " "),
                 "description": data["description"],
                 "val": degrees[stem],
                 "type": data["type"],

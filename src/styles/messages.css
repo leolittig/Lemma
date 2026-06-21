@@ -228,6 +228,13 @@
   animation: assistantMessageFadeIn 2.2s cubic-bezier(0.05, 0.95, 0.1, 1) backwards;
 }
 
+/* Extra space above an assistant reply so the floating brain-activity tags
+   (which sit in the gap above the bubble) clear the user's message. Combined
+   with the list's 1.1rem gap this leaves ~2rem. */
+.user + .assistant {
+  margin-top: 2rem;
+}
+
 .assistant .message-bubble {
   background-color: rgba(255, 255, 255, 0.276);
   box-shadow: 5px 10px 20px rgba(0, 0, 0, 0.05);
@@ -438,6 +445,9 @@
   gap: 0.5rem;
   max-width: 100%;
   order: 1;
+  /* Positioning context for the brain-activity block, which floats above the
+     bubble when collapsed so its memory tags don't push the bubble down. */
+  position: relative;
 }
 
 .assistant-indicator-container {

@@ -6,7 +6,7 @@
 // keeps the low end (where most useful values live) as well-spaced as the
 // high end.
 export const CTX_STEPS = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
-export const CTX_DEFAULT_INDEX = 2; // 2048
+export const CTX_DEFAULT_INDEX = 4; // 8192
 
 // Discrete options for the maximum response length (tokens). 0 = unlimited.
 export const MAX_TOKENS_STEPS = [128, 256, 512, 1024, 2048, 4096, 8192, 16384, 0];

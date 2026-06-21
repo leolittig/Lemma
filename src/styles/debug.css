@@ -1,0 +1,137 @@
+/* The floating model-debug window (components/DebugWindow.jsx). Draggable via
+   its header, resizable via the native CSS resize handle. */
+
+.debug-window {
+  position: fixed;
+  z-index: 1000;
+  width: 440px;
+  height: 520px;
+  min-width: 260px;
+  min-height: 160px;
+  max-width: 96vw;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: #0f1117;
+  color: #e6e6e6;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  resize: both;
+}
+
+.debug-window-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: #171a22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: move;
+  user-select: none;
+}
+
+.debug-window-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #cdd3df;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.debug-window-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.debug-window-btn {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  font-family: inherit;
+  color: #cdd3df;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.debug-window-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.debug-window-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem 0.6rem 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.debug-window-empty {
+  color: #7b8494;
+  padding: 0.5rem;
+  font-style: italic;
+}
+
+.debug-entry {
+  margin-bottom: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid #4b5566;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.debug-entry.debug-phase-routing { border-left-color: #d6a23a; }
+.debug-entry.debug-phase-chat { border-left-color: #3b82f6; }
+.debug-entry.debug-phase-post-processing { border-left-color: #34c759; }
+.debug-entry.debug-phase-title { border-left-color: #b06fc4; }
+
+.debug-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.debug-entry-phase {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: #e6e6e6;
+}
+
+.debug-entry-status {
+  font-size: 0.66rem;
+  color: #8b93a3;
+}
+
+.debug-entry-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #7b8494;
+  margin-top: 0.3rem;
+}
+
+.debug-entry-text {
+  margin: 0.1rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.debug-entry-input { color: #9fb0c7; }
+.debug-entry-output { color: #d7e2c2; }

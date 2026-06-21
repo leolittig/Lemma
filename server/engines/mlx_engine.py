@@ -41,6 +41,17 @@ class MlxEngine(Engine):
         self._model = model
         self._processor = processor
         self._path = model_ref
+        self._stream = mx.default_stream(mx.default_device())
+
+        # Warm up the model to compile and initialize stream bindings on the main thread
+        try:
+            print(f"[MLX Engine] Warming up model '{model_ref}' on main thread...")
+            prompt = apply_chat_template(processor, model.config, [{"role": "user", "content": "warmup"}])
+            for _ in stream_generate(model, processor, prompt, max_tokens=1):
+                pass
+            print("[MLX Engine] Model warm-up complete.")
+        except Exception as e:
+            print(f"[MLX Engine] Warm-up failed: {e}")
 
     def unload(self) -> None:
         self._model = None
@@ -116,6 +127,9 @@ class MlxEngine(Engine):
                 self._model, self._processor, prompt,
                 image=image_paths or None, audio=audio_paths or None, **kwargs):
             yield chunk.text
+
+    def active_stream(self):
+        return getattr(self, "_stream", None)
 
     def clear_cache(self) -> None:
         mx.clear_cache()

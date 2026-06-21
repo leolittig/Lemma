@@ -92,11 +92,16 @@ class Engine:
         raise NotImplementedError
 
     def complete_stream(self, prompt_text: str, *, max_tokens: int,
-                        max_kv_size: Optional[int] = None) -> Iterator[str]:
+                        max_kv_size: Optional[int] = None,
+                        temperature: float = 1.0) -> Iterator[str]:
         """Stream a single-turn completion of a plain user prompt — the internal
         brain calls (routing, post-processing, title). Default wraps `stream`."""
-        prompt = self.format_chat([{"role": "user", "text": prompt_text}], "")
-        yield from self.stream(prompt, max_tokens=max_tokens, max_kv_size=max_kv_size)
+        prompt = self.format_chat([{"role": "user", "text": prompt_text}], "", enable_thinking=False)
+        yield from self.stream(prompt, max_tokens=max_tokens, max_kv_size=max_kv_size, temperature=temperature)
+
+    def active_stream(self):
+        """Return the device stream used by the engine, or None."""
+        return None
 
     def clear_cache(self) -> None:
         """Free a generation's transient GPU/CPU buffers. No-op where unneeded."""

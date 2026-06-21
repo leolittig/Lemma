@@ -66,6 +66,7 @@ export default function SettingsModal({ open, onClose, settings, downloads = {},
     pauseBrainWriting, setPauseBrainWriting,
     detailedLogs, setDetailedLogs,
     thinkingEnabled, setThinkingEnabled,
+    debugMode, setDebugMode,
   } = settings;
 
   // Keep the instructions textarea sized to its content, also right after the
@@ -281,6 +282,18 @@ export default function SettingsModal({ open, onClose, settings, downloads = {},
               on={detailedLogs}
               onToggle={() => setDetailedLogs((v) => !v)}
               label="detailed memory logs"
+            />
+          </div>
+        </div>
+        <div className="settings-section-divider" />
+        <label className="settings-section-title">Developer</label>
+        <div className="settings-field">
+          <div className="settings-toggle-row">
+            <label className="settings-label">Debug window (every model token)</label>
+            <ToggleSwitch
+              on={debugMode}
+              onToggle={() => setDebugMode((v) => !v)}
+              label="debug window"
             />
           </div>
         </div>

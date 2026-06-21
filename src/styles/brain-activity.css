@@ -3,11 +3,23 @@
    reasoning. Visually similar to the thinking block but with its own accent. */
 
 .brain-activity-block {
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.1rem;
 }
 
 .brain-activity-block:last-child {
   margin-bottom: 0;
+}
+
+/* Collapsed (icon + live memory tags): float just above the bubble so showing
+   or hiding the tags never shifts the bubble's position. The expandable panel
+   (.open) stays in normal flow, since the user opened it on purpose and it
+   should grow the layout downward. */
+.brain-activity-block:not(.open) {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 0.15rem;
+  max-width: 100%;
 }
 
 button.brain-activity-toggle-row {
@@ -17,7 +29,7 @@ button.brain-activity-toggle-row {
   width: auto;
   height: auto;
   min-width: 0;
-  padding: 0.2rem 0;
+  padding: 0 1.5rem;
   border-radius: 0;
   background: transparent;
   border: none;
@@ -42,8 +54,58 @@ button.brain-activity-toggle-row:active {
 }
 
 .brain-activity-icon {
-  font-size: 0.9rem;
-  line-height: 1;
+  width: 20px;
+  height: 20px;
+  color: #9ca3af;
+  padding-bottom: 0.8rem;
+  object-fit: contain;
+  display: block;
+  background: transparent;
+  box-shadow: none !important;
+  filter: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  /* Fade in when the block first appears (e.g. once routing/the reply lands). */
+  animation: brainIconIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes brainIconIn {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* The live-tag row before the expandable panel exists: not a toggle, so no
+   pointer cursor. */
+.brain-activity-status-row {
+  cursor: default;
+}
+
+/* Read-memory tags shown next to the icon during the active turn. Each chip
+   fades in as routing reveals it; the whole row slides left into the icon (and
+   fades) when the turn ends. The padding-bottom matches the icon's so the tags
+   sit at the same height as the brain icon. */
+.brain-activity-live-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-bottom: 0.8rem;
+  transform-origin: left center;
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 1, 1);
+}
+
+.brain-activity-live-chips.exiting {
+  opacity: 0;
+  transform: translateX(-18px) scale(0.7);
+}
+
+.brain-activity-live-chips .brain-chip {
+  animation: brainChipIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes brainChipIn {
+  from { opacity: 0; transform: translateY(3px) scale(0.95); }
+  to { opacity: 1; transform: none; }
 }
 
 .brain-activity-chevron {
