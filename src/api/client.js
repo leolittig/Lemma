@@ -171,6 +171,15 @@ export async function fetchBrainGraph(mode) {
   return res.json(); // { nodes: [...], links: [...], processing: bool }
 }
 
+// Turn the model debug tap on/off on the server (drives the debug window).
+export async function setDebugMode(enabled) {
+  await fetch('/api/debug/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 // The live activity feed for the background memory update — drives the app-bar
 // spinner and the brain view's real-time log.
 export async function fetchBrainActivity() {

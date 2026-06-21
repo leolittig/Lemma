@@ -66,7 +66,7 @@ function parseFrontmatter(content) {
 function replaceMentionsWithTags(text) {
   if (!text) return '';
   return text.replace(/(?<![A-Za-z0-9_])@([A-Za-z0-9_]+)/g, (match, name) => {
-    return `<button class="brain-ref-chip" data-node="${name}">${name}</button>`;
+    return `<button class="brain-ref-chip" data-node="${name}">${name.replace(/_/g, ' ')}</button>`;
   });
 }
 
@@ -74,7 +74,7 @@ function replaceWikiLinksWithTags(text) {
   if (!text) return '';
   return text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, node, label) => {
     const targetNode = node.trim();
-    const displayLabel = label ? label.trim() : targetNode;
+    const displayLabel = label ? label.trim() : targetNode.replace(/_/g, ' ');
     return `<button class="brain-ref-chip" data-node="${targetNode}">${displayLabel}</button>`;
   });
 }

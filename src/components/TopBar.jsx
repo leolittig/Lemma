@@ -2,8 +2,9 @@
 // and the settings gear on the right.
 
 import React from 'react';
-import { Brain } from 'lucide-react';
 import lemmaLogo from '../assets/LemmaLogo.png';
+import graphIcon from '../assets/graph-icon.png';
+import graphUpdatingGif from '../assets/graph-updating.gif';
 
 export default function TopBar({
   sidebarCollapsed,
@@ -45,28 +46,21 @@ export default function TopBar({
 
       {onToggleBrainExplorer && (
         <div className="brain-toolbar-cluster">
-          {brainProcessing && (
-            <span
-              className="brain-updating-spinner"
-              role="status"
-              aria-label="Updating memory"
-              title="Updating memory…"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <polyline points="1 20 1 14 7 14"></polyline>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-              </svg>
-            </span>
-          )}
           <button
             id="brain-toggle-btn"
             className={`brain-toggle-btn${showBrainExplorer ? ' active' : ''}`}
             onClick={onToggleBrainExplorer}
             aria-label={showBrainExplorer ? 'Close brain explorer' : 'Open brain explorer'}
-            title="Brain Explorer"
+            title={brainProcessing ? 'Updating memory…' : 'Brain Explorer'}
           >
-            <Brain size={18} strokeWidth={2} />
+            {/* While the graph updates after a turn, the icon becomes the
+                graph-updating animation (replacing the old spinning arrows). */}
+            <img
+              className="brain-toggle-icon"
+              src={brainProcessing ? graphUpdatingGif : graphIcon}
+              alt=""
+              draggable={false}
+            />
           </button>
         </div>
       )}

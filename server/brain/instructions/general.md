@@ -56,26 +56,7 @@ One-line description of what this node is.
 
 Rules:
 - **Always include `type`.** Omitting it defaults to a generic leaf and breaks organization.
-- **Set a customized `icon`** whenever creating or updating a node to represent it specifically:
-  - `heart` - romantic partner (e.g., boyfriend, girlfriend, spouse)
-  - `user` - individual friends or people
-  - `users` - group of people (e.g. family, book club, friends)
-  - `briefcase` - work, jobs, career, internships
-  - `graduation-cap` - university, college, degrees, studies, courses
-  - `music` - band, musical instruments, songs, music projects
-  - `dollar-sign` - finance, budget, sales
-  - `shopping-bag` - business, commerce, client projects, 3D printing sales
-  - `dog` - pets, animals
-  - `target` - personal goals, objectives
-  - `gamepad-2` - gaming, entertainment, play
-  - `plane` - travel, vacations, flights
-  - `home` - family home, household
-  - `book-open` - books, reading, studies, learning
-  - `code` - coding, programming, software development projects
-  - `dumbbell` - workout, fitness, gym, sports
-  - `map-pin` - locations, cities, venues
-  - `award` - achievements, awards, milestones
-  - **And any other valid Lucide icon name** (kebab-case, e.g., `heart-handshake`, `brain`, `calendar`, `sparkles`, `coffee`, `camera`).
+- **Set a customized `icon`** (optional, e.g. `user`, `graduation-cap`, `briefcase`, `heart`) to represent a node specifically (see the customized icons manual for a full list when loaded).
 - **Bracketed timestamps** `[YYYY-MM-DD HH:MM]` start every log line.
 - **Verbal dates in text**: write dates as English month names ("June 18th"), **never** numeric ISO ("2026-06-18") inside the text of an entry.
 - **Short filenames**, no spaces (e.g. `Eve.md`, `College.md`, `Work.md`).
@@ -84,6 +65,8 @@ Rules:
 ---
 
 ## 4. Commands
+
+Graph nodes (everything except the three off-grid entities):
 
 ```text
 === CREATE filename.md ===
@@ -95,18 +78,30 @@ Rules:
 === DELETE filename.md ===
 ```
 
+Off-grid entities append with dedicated commands:
+
+```text
+=== JOURNAL ===
+[one short line; it is appended under today's date automatically]
+
+=== CALENDAR ===
+[a dated fact, with @mentions]
+```
+
 Guidelines:
 - **Auto-commit**: record new information without being asked.
 - **CREATE** a node for each new entity, linking it per the rules.
 - **UPDATE** preserves history: keep prior log entries, bump `updated`, append new ones, keep the correct `type`.
 - **DELETE** only when info is explicitly removed or fully merged elsewhere; then UPDATE any node that linked to it to drop the dead `[[link]]`.
+- **JOURNAL** appends to the daily log; **CALENDAR** adds a dated fact. **CRITICAL: to add to the journal you MUST use `=== JOURNAL ===`. NEVER emit `=== CREATE Journal.md ===` or `=== UPDATE Journal.md ===` — a direct write to the journal is IGNORED.** (`Calendar.md` and `Assistant.md` may be `UPDATE`d only to tidy them, per their own instructions.)
+- **Ignore trivial, test, diagnostic, and meta turns.** Greetings ("hi"), checks ("test", "are you working"), and anyone poking the assistant or memory system itself carry no personal information — do not create nodes, journal them, or record them anywhere.
 - If nothing needs remembering, output nothing.
 
 ---
 
 ## 5. Worked example
 
-User says: "My closest friend is Alice, from the book club. Her brothers Bob and Charlie are twins, also from the club. My birthday is October 12th. I have a day job in accounting and also do gardening on the side."
+User says: "My closest friend is Alice, from the book club. My birthday is October 12th."
 
 ```text
 === CREATE Friends.md ===
@@ -138,68 +133,8 @@ The user's closest friend, from the book club.
 ## Connections & Links
 - [[Friends]]
 
-=== CREATE Bob.md ===
----
-created: 2026-06-11 14:00
-updated: 2026-06-11 14:00
-type: person
-relationship: Book club friend
----
-
-# Bob
-
-Twin brother of Charlie, from the book club.
-
-## Connections & Links
-- [[Friends]]
-- [[Charlie]]
-
-=== CREATE Charlie.md ===
----
-created: 2026-06-11 14:00
-updated: 2026-06-11 14:00
-type: person
-relationship: Book club friend
----
-
-# Charlie
-
-Twin brother of Bob, from the book club.
-
-## Connections & Links
-- [[Friends]]
-- [[Bob]]
-
-=== CREATE Work.md ===
----
-created: 2026-06-11 14:00
-updated: 2026-06-11 14:00
-type: activity
----
-
-# Work
-
-The user's day job in accounting.
-
-## Connections & Links
-- [[User]]
-
-=== CREATE Gardening.md ===
----
-created: 2026-06-11 14:00
-updated: 2026-06-11 14:00
-type: activity
----
-
-# Gardening
-
-The user's gardening side hobby.
-
-## Connections & Links
-- [[User]]
-
 === CALENDAR ===
 **Birthday**: User's birthday — October 12th. @User
 ```
 
-Note: the friends are under `[[Friends]]` (not wired to the root individually), the twins peer-link each other, the job and the side hobby are **separate** activities, and the birthday went to the Calendar with an @mention — not a `[[Calendar]]` edge.
+Note: the friends are under `[[Friends]]` (not wired to the root individually) to avoid flat fan-out, and the birthday went to the Calendar with an @mention — not a `[[Calendar]]` edge.

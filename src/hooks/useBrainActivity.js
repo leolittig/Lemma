@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import * as api from '../api/client';
 
-const EMPTY = { processing: false, events: [], stream: '' };
+const EMPTY = { processing: false, events: [], stream: '', routingFiles: [] };
 
 export function useBrainActivity(enabled) {
   const [activity, setActivity] = useState(EMPTY);
@@ -25,11 +25,12 @@ export function useBrainActivity(enabled) {
     api.fetchBrainActivity()
       .then((data) => {
         if (!cancelled) {
-          setActivity({
+          setActivity((prev) => ({
+            ...prev,
             processing: !!data.processing,
             events: data.events || [],
             stream: data.stream || '',
-          });
+          }));
         }
       })
       .catch((err) => console.error('Initial brain activity fetch failed:', err));
@@ -50,11 +51,15 @@ export function useBrainActivity(enabled) {
           const msg = JSON.parse(event.data);
           if (msg.type === 'activity') {
             const data = msg.data;
-            setActivity({
+            setActivity((prev) => ({
+              ...prev,
               processing: !!data.processing,
               events: data.events || [],
               stream: data.stream || '',
-            });
+            }));
+          } else if (msg.type === 'routing') {
+            const files = (msg.data && msg.data.files) || [];
+            setActivity((prev) => ({ ...prev, routingFiles: files }));
           } else if (msg.type === 'graph_changed') {
             window.dispatchEvent(new CustomEvent('brain-graph-changed'));
           }

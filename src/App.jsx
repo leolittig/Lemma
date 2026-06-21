@@ -18,6 +18,7 @@ import { useMessageFlip } from './hooks/useMessageFlip';
 import { useConversations } from './hooks/useConversations';
 import { useChat } from './hooks/useChat';
 import { useBrainActivity } from './hooks/useBrainActivity';
+import { useDebugLog } from './hooks/useDebugLog';
 
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
@@ -28,6 +29,7 @@ import AddModelModal from './components/AddModelModal';
 import ModelLoadingOverlay from './components/ModelLoadingOverlay';
 import BrainExplorer from './components/BrainExplorer';
 import BrainNameSetup from './components/BrainNameSetup';
+import DebugWindow from './components/DebugWindow';
 
 const BRAIN_MODE = 'active';
 
@@ -47,6 +49,7 @@ export default function App() {
   const chat = useChat({ conversations, settings, attachments, scroll });
   const registerMessageRef = useMessageFlip(conversations.history);
   const brainActivity = useBrainActivity(settings.brainEnabled);
+  const debugLog = useDebugLog(settings.debugMode);
 
   // Keep the view following the newest content while the scroll lock is on.
   useEffect(() => {
@@ -204,6 +207,13 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {settings.debugMode && (
+        <DebugWindow
+          entries={debugLog.entries}
+          onClear={debugLog.clear}
+          onClose={() => settings.setDebugMode(false)}
+        />
+      )}
       <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }} aria-hidden="true">
         <defs>
           <filter id="make-white-transparent">
@@ -268,6 +278,7 @@ export default function App() {
                 scroll={scroll}
                 onThinkingOpened={scroll.releaseLock}
                 userName={userName || (activeProfileObj.name !== 'Default' ? activeProfileObj.name : '')}
+                liveRoutingFiles={brainActivity.routingFiles}
               />
               <Composer
                 inputText={chat.inputText}

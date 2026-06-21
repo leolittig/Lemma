@@ -31,6 +31,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .. import config, thinking
+from .. import debug as debug_tap
 from ..context_window import build_prompt
 from ..model_manager import manager, generation_lock, acquire_generation_lock
 from ..schemas import ChatRequest
@@ -48,6 +49,16 @@ POST_PROCESSING_CONTEXT_CHARS = 8000
 # cache during a background generation can push Metal past its memory limit
 # and hard-crash the process.
 INTERNAL_MAX_KV = 4096
+
+# Re-evaluate the conversation title on the first user turn, then every Nth
+# turn, so a clear topic shift is still caught without paying for a title
+# generation on every single message.
+TITLE_RECHECK_EVERY = 5
+
+# Characters of recent conversation fed to the routing model. Routing runs under
+# INTERNAL_MAX_KV (4096 tokens); ~6000 chars (~1500 tokens) leaves room for the
+# brain map, the instructions, and the short routing generation.
+ROUTING_CONTEXT_CHARS = 6000
 
 
 @router.post("/chat")
@@ -71,7 +82,11 @@ async def chat(msg: ChatRequest, request: Request):
 
     await acquire_generation_lock()
     try:
-        routing = _run_routing(msg.text, brain_mode) if brain_mode else None
+        # Run routing in a worker thread: it's a synchronous model generation,
+        # and calling it directly here would block the single event loop for the
+        # whole phase, starving every other request — most visibly the Brain
+        # Explorer's graph/calendar/journal endpoints right after a send.
+        routing = await asyncio.to_thread(_run_routing, msg.text, brain_mode, conv.get("messages", [])) if brain_mode else None
     except Exception as e:
         return JSONResponse(status_code=503, content={"status": "error", "message": str(e)})
     finally:
@@ -117,7 +132,8 @@ async def chat(msg: ChatRequest, request: Request):
                        brain_mode=brain_mode,
                        brain_writes=brain_writes,
                        brain_activity=brain_activity,
-                       user_text=msg.text)
+                       user_text=msg.text,
+                       memory_worthy=routing["memory_worthy"] if routing else True)
     headers = _context_headers(msg.conversation_id, trimmed, out_ranges)
     if brain_activity and (brain_activity["routing_reasoning"] or brain_activity["files_read"]):
         # Routing info for the live message bubble. json.dumps escapes
@@ -155,36 +171,92 @@ def _read_brain_file(mode: str, fname: str):
     return None
 
 
-def _run_routing(user_text: str, mode: str) -> dict:
+def _run_routing(user_text: str, mode: str, history: list = None) -> dict:
     """Run the routing model to identify which brain files to read.
 
-    Returns { reasoning, files_to_read }. Caller must hold generation_lock.
+    Returns { reasoning, files_to_read, memory_worthy }. Caller must hold
+    generation_lock. `history` is the prior conversation turns, so routing can
+    judge a context-dependent message (e.g. "I bought the wrong color") against
+    what was being discussed.
     """
-    result = {"reasoning": "", "files_to_read": []}
+    try:
+        import mlx.core as mx
+        for _ in range(5):
+            mx.new_stream(mx.gpu)
+    except ImportError:
+        pass
+    result = {"reasoning": "", "files_to_read": [], "memory_worthy": True}
 
     if not manager.is_loaded:
         return result
+
+    # Routing must see the same conversation the responding model sees, so its
+    # file-selection and memory_worthy judgments match what led the assistant to
+    # act. Include the whole conversation, trimmed from the front to the router's
+    # KV budget (recent turns kept).
+    recent = ""
+    if history:
+        lines = [f"{m['role']}: {m['text']}" for m in history if m.get("text")]
+        if lines:
+            recent = "\n".join(lines)[-ROUTING_CONTEXT_CHARS:]
 
     now = datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     prompt = (
         f"You are a routing assistant. The current date/time is {now}.\n"
         f"Available brain memory files:\n{_load_brain_map(mode)}\n\n"
-        f"User message: {user_text}\n\n"
-        f"Respond with ONLY a JSON object (no markdown fencing) with two keys:\n"
+        + (f"Recent conversation (for context):\n{recent}\n\n" if recent else "")
+        + f"Latest user message: {user_text}\n\n"
+        f"Respond with ONLY a JSON object (no markdown fencing) with these keys:\n"
         f'- "reasoning": a brief explanation of why these files are relevant\n'
         f'- "files": a list of filenames (without .md) to read for context\n'
+        f'- "memory_worthy": true if the message — read in the context of the '
+        f'recent conversation — adds or changes any personal fact, event, plan, '
+        f'task, status, relationship, or preference worth saving to long-term '
+        f'memory (updates to an ongoing project count); false for pure chitchat, '
+        f'general-knowledge questions, trivia, greetings, or test/diagnostic/meta '
+        f'messages (e.g. typing "test", "hello", or checking whether the system '
+        f'or memory works — the act of testing the assistant is never worth saving)\n'
         f"If no files are relevant, return an empty list.\n"
-        f"Example: {{\"reasoning\": \"User asks about work\", \"files\": [\"Work\", \"LemmaProject\"]}}"
+        f"Example: {{\"reasoning\": \"User asks about work\", \"files\": [\"Work\", \"LemmaProject\"], \"memory_worthy\": true}}"
     )
 
+    # Reveal each chosen file live as the model writes it, so the chat UI can
+    # show the memory tags appearing as the decision is made. We watch the
+    # streamed JSON's "files" array and push each newly-completed filename.
+    storage_brain.push_routing([])  # clear any prior turn's tags
+    streamed = {"text": ""}
+    seen = []
+
+    def _on_token(chunk: str):
+        streamed["text"] += chunk
+        m = re.search(r'"files"\s*:\s*\[([^\]]*)', streamed["text"], re.DOTALL)
+        if not m:
+            return
+        for fm in re.finditer(r'"([^"]+)"', m.group(1)):
+            name = fm.group(1).strip()
+            if name and name not in seen:
+                seen.append(name)
+                storage_brain.push_routing(seen)
+
     try:
-        raw = _generate_once(prompt, max_tokens=200)
+        raw = _generate_once(prompt, max_tokens=200, on_token=_on_token, phase="routing")
         # The model may wrap the JSON in prose or ```json fencing.
         json_match = re.search(r'\{.*\}', raw, re.DOTALL)
         if json_match:
             parsed = json.loads(json_match.group())
             result["reasoning"] = parsed.get("reasoning", "")
             result["files_to_read"] = parsed.get("files", [])
+            # Default to writing when the flag is absent, so a malformed routing
+            # reply never silently drops a memory-worthy turn.
+            has_flag = "memory_worthy" in parsed
+            result["memory_worthy"] = bool(parsed.get("memory_worthy", True))
+            print(f"[Routing] files={result['files_to_read']} "
+                  f"memory_worthy={result['memory_worthy']}"
+                  f"{'' if has_flag else ' (defaulted — flag missing from reply)'}")
+            # Settle the live tags on the authoritative parsed list (in case the
+            # incremental scan and the final JSON disagree).
+            if result["files_to_read"] != seen:
+                storage_brain.push_routing(result["files_to_read"])
     except Exception as e:
         print(f"Routing error: {e}")
         result["reasoning"] = f"Routing error: {e}"
@@ -192,25 +264,30 @@ def _run_routing(user_text: str, mode: str) -> dict:
     return result
 
 
-def _generate_once(prompt: str, max_tokens: int, on_token=None) -> str:
+def _generate_once(prompt: str, max_tokens: int, on_token=None, phase: str = "brain", temperature: float = 0.1) -> str:
     """One completion for the internal brain calls, on the active engine.
 
     `on_token`, when given, is called with each chunk's text as it streams —
     used to surface the memory model's live output to the UI. It is a passive
-    observer; the returned text and everything else is unchanged.
+    observer; the returned text and everything else is unchanged. `phase` labels
+    the call for the debug tap (routing / post-processing / title).
     """
     engine = manager.engine
     chunks = []
+    debug_tap.emit_prompt(phase, prompt)
     try:
         for text in engine.complete_stream(prompt, max_tokens=max_tokens,
-                                            max_kv_size=INTERNAL_MAX_KV):
+                                            max_kv_size=INTERNAL_MAX_KV,
+                                            temperature=temperature):
             chunks.append(text)
+            debug_tap.emit(phase, "token", text)
             if on_token:
                 on_token(text)
     finally:
         # Free the generation's transient buffers right away — leftover caches
         # from consecutive generations are what push Metal out of memory.
         engine.clear_cache()
+        debug_tap.emit(phase, "end")
     return thinking.strip_thinking("".join(chunks).strip()).strip()
 
 
@@ -264,6 +341,12 @@ def _run_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
     Wraps the actual work in a processing marker so the Brain Explorer can show
     that the graph is being updated (and is briefly stale) until it refreshes.
     """
+    try:
+        import mlx.core as mx
+        for _ in range(5):
+            mx.new_stream(mx.gpu)
+    except ImportError:
+        pass
     config.active_profile.set(profile)
     storage_brain.begin_processing()
     try:
@@ -272,22 +355,13 @@ def _run_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
         storage_brain.end_processing()
 
 
-def _get_manual_for_turn(mode: str, user_text: str, assistant_text: str, files_read: list) -> str:
-    """Load only the relevant manual instruction files for a given conversation turn."""
-    instructions_dir = config.PROJECT_ROOT / "server" / "brain" / "instructions"
-    
-    # Always load general.md
-    general_path = instructions_dir / "general.md"
-    manual_content = []
-    loaded_files = []
-    try:
-        if general_path.exists():
-            manual_content.append(general_path.read_text(encoding="utf-8"))
-            loaded_files.append("general.md")
-    except Exception as e:
-        print(f"Error reading general manual: {e}")
+def _relevant_brain_categories(mode: str, user_text: str, assistant_text: str, files_read: list) -> dict:
+    """Which memory categories a conversation turn touches.
 
-    # Check frontmatter types of read files
+    Combines the frontmatter `type` of the files routing read with keyword
+    signals in the turn text. Used both to pick the instruction files for the
+    write pass and to decide whether a turn is worth writing at all (see
+    `_turn_is_memory_worthy`)."""
     read_types = set()
     for fname in files_read:
         content = _read_brain_file(mode, fname)
@@ -298,60 +372,204 @@ def _get_manual_for_turn(mode: str, user_text: str, assistant_text: str, files_r
 
     combined_text = f"{user_text} {assistant_text}".lower()
 
-    include_people = "person" in read_types or any(k in combined_text for k in [
-        "friend", "brother", "sister", "mom", "dad", "mother", "father", 
-        "girlfriend", "boyfriend", "husband", "wife", "partner", "son", 
-        "daughter", "cousin", "family", "born", "relationship", "meet", 
+    people = "person" in read_types or any(k in combined_text for k in [
+        "friend", "brother", "sister", "mom", "dad", "mother", "father",
+        "girlfriend", "boyfriend", "husband", "wife", "partner", "son",
+        "daughter", "cousin", "family", "born", "relationship", "meet",
         "who is", "introduced"
     ])
-    include_tasks = "task" in read_types or any(k in combined_text for k in [
-        "todo", "to-do", "task", "project", "assignment", "homework", 
-        "exam", "test", "errand", "obligation", "deadline", "due", 
+    tasks = "task" in read_types or any(k in combined_text for k in [
+        "todo", "to-do", "task", "project", "assignment", "homework",
+        "exam", "test", "errand", "obligation", "deadline", "due",
         "status", "complete", "finish", "done", "need to"
     ])
-    include_activities = "activity" in read_types or any(k in combined_text for k in [
-        "job", "work", "school", "university", "college", "class", 
+    activities = "activity" in read_types or any(k in combined_text for k in [
+        "job", "work", "school", "university", "college", "class",
         "gig", "business", "hobby", "sport", "club", "practice", "play", "run"
     ])
-    include_groups = "group" in read_types or include_people or include_tasks or include_activities or any(k in combined_text for k in [
+    groups = "group" in read_types or people or tasks or activities or any(k in combined_text for k in [
         "friends", "family", "group", "team", "classmates", "coworkers"
     ])
+    calendar = "Calendar" in files_read or any(k in combined_text for k in [
+        "birthday", "anniversary", "christmas", "valentine", "calendar",
+        "event", "schedule", "date", "next week", "tomorrow", "yesterday",
+        "holiday", "observance", "beliefs", "religion", "christian",
+        "catholic", "church", "past", "future", "january", "february",
+        "march", "april", "may", "june", "july", "august", "september",
+        "october", "november", "december"
+    ])
+    journal = "Journal" in files_read or any(k in combined_text for k in [
+        "journal", "diary", "log", "daily", "today", "yesterday",
+        "happened today", "notable"
+    ])
+    assistant = "Assistant" in files_read or any(k in combined_text for k in [
+        "always remind", "brief", "metric", "units", "assistant",
+        "behave", "respond", "prefer", "timezone"
+    ])
 
-    file_mappings = [
-        ("people.md", include_people),
-        ("tasks.md", include_tasks),
-        ("activities.md", include_activities),
-        ("groups.md", include_groups),
-        ("calendar.md", "Calendar" in files_read or any(k in combined_text for k in [
-            "birthday", "anniversary", "christmas", "valentine", "calendar", 
-            "event", "schedule", "date", "next week", "tomorrow", "yesterday", 
-            "holiday", "observance", "beliefs", "religion", "christian", 
-            "catholic", "church", "past", "future", "january", "february", 
-            "march", "april", "may", "june", "july", "august", "september", 
-            "october", "november", "december"
-        ])),
-        ("journal.md", "Journal" in files_read or any(k in combined_text for k in [
-            "journal", "diary", "log", "daily", "today", "yesterday", 
-            "happened today", "notable"
-        ])),
-        ("assistant.md", "Assistant" in files_read or any(k in combined_text for k in [
-            "always remind", "brief", "metric", "units", "assistant", 
-            "behave", "respond", "prefer", "timezone"
-        ])),
-    ]
+    # Load icons manual if user is talking about icons/types, or if a new node might be created
+    brain_dir = storage_brain.get_brain_dir(mode)
+    stems = {f.stem for f in brain_dir.glob("*.md")} if brain_dir.exists() else set()
+    words = re.findall(r"\b[A-Z][a-zA-Z0-9_]*\b", user_text)
+    has_new_entity = any(w not in stems and w not in ("I", "User", "Calendar", "Journal", "Assistant") for w in words)
+    icons = "icon" in combined_text or "type" in combined_text or has_new_entity
 
-    for fname, should_include in file_mappings:
+    return {
+        "people": people, "tasks": tasks, "activities": activities,
+        "groups": groups, "calendar": calendar, "journal": journal,
+        "assistant": assistant, "icons": icons,
+    }
+
+
+# Phrases the assistant uses when it tells the user it saved something. If the
+# reply makes such a claim, we MUST run the write pass — otherwise the assistant
+# says "I've updated your notes" while nothing is actually written.
+_MEMORY_CLAIM_PHRASES = (
+    "updated your", "added to your", "saved to your", "recorded that",
+    "noted that", "i have updated", "i've updated", "i have recorded",
+    "i've recorded", "i have saved", "i've saved", "i have noted", "i've noted",
+    "i have added", "i've added", "i'll remember", "i will remember",
+    "i've made a note", "i have made a note", "made a note of",
+    "your project notes", "to memory",
+)
+
+
+def _turn_is_memory_worthy(routing_worthy: bool, assistant_text: str = "") -> bool:
+    """Whether a turn should trigger the (expensive) brain write pass.
+
+    The cheap pre-check that runs *before* the write pass (and the processing
+    spinner). We trust routing's `memory_worthy` verdict — now made with the
+    recent conversation as context — but always run the pass when the assistant
+    told the user it saved something, so its claim is never a lie. We do NOT use
+    the broad instruction-file keyword heuristic here: it matched almost every
+    turn and never skipped."""
+    if routing_worthy:
+        return True
+    low = (assistant_text or "").lower()
+    return any(p in low for p in _MEMORY_CLAIM_PHRASES)
+
+
+def _get_manual_for_turn(mode: str, user_text: str, assistant_text: str, files_read: list) -> str:
+    """Load only the relevant manual instruction files for a given conversation turn."""
+    instructions_dir = config.PROJECT_ROOT / "server" / "brain" / "instructions"
+    
+    manual_content = []
+    loaded_files = []
+
+    def _load(fname):
+        fpath = instructions_dir / fname
+        try:
+            if fpath.exists():
+                manual_content.append(fpath.read_text(encoding="utf-8"))
+                loaded_files.append(fname)
+        except Exception as e:
+            print(f"Error reading {fname}: {e}")
+
+    # Always load the general rules and the journal: the model can append to the
+    # journal on any turn, so it must always know to use the JOURNAL command.
+    _load("general.md")
+    _load("journal.md")
+
+    # Node-type and Calendar instructions are loaded only when the turn touches them.
+    flags = _relevant_brain_categories(mode, user_text, assistant_text, files_read)
+    for fname, should_include in [
+        ("calendar.md", flags["calendar"]),
+        ("people.md", flags["people"]),
+        ("tasks.md", flags["tasks"]),
+        ("activities.md", flags["activities"]),
+        ("groups.md", flags["groups"]),
+        ("assistant.md", flags["assistant"]),
+        ("icons.md", flags["icons"]),
+    ]:
         if should_include:
-            fpath = instructions_dir / fname
-            try:
-                if fpath.exists():
-                    manual_content.append(fpath.read_text(encoding="utf-8"))
-                    loaded_files.append(fname)
-            except Exception as e:
-                print(f"Error reading {fname}: {e}")
+            _load(fname)
 
     print(f"[Brain Manager] Loaded instruction files for turn: {', '.join(loaded_files)}")
     return "\n\n---\n\n".join(manual_content)
+
+
+def _read_filtered_calendar(mode: str, files_read: list) -> str:
+    path = storage_brain.get_brain_dir(mode) / "Calendar.md"
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    header = []
+    entries = []
+    in_entries = False
+    for line in lines:
+        if "## Entries" in line:
+            in_entries = True
+            header.append(line)
+            continue
+        if not in_entries:
+            header.append(line)
+        else:
+            if line.strip().startswith("-"):
+                entries.append(line.strip())
+                
+    filtered = []
+    for entry in entries:
+        if "Calendar" in files_read:
+            filtered.append(entry)
+            continue
+        mentions = re.findall(r'@(\w+)', entry)
+        if any(m == "User" or m in files_read for m in mentions):
+            filtered.append(entry)
+            
+    return "\n".join(header) + "\n" + "\n".join(filtered)
+
+
+def _salvage_calendar_update(mode: str, model_content: str, files_read: list) -> str:
+    path = storage_brain.get_brain_dir(mode) / "Calendar.md"
+    if not path.exists():
+        return model_content
+    disk_text = path.read_text(encoding="utf-8")
+    
+    disk_entries = []
+    in_entries = False
+    for line in disk_text.splitlines():
+        if "## Entries" in line:
+            in_entries = True
+            continue
+        if in_entries and line.strip().startswith("-"):
+            disk_entries.append(line.strip())
+            
+    shown = set()
+    for entry in disk_entries:
+        if "Calendar" in files_read:
+            shown.add(entry)
+            continue
+        mentions = re.findall(r'@(\w+)', entry)
+        if any(m == "User" or m in files_read for m in mentions):
+            shown.add(entry)
+            
+    model_entries = []
+    in_entries = False
+    for line in model_content.splitlines():
+        if "## Entries" in line:
+            in_entries = True
+            continue
+        if in_entries and line.strip().startswith("-"):
+            model_entries.append(line.strip())
+            
+    merged = []
+    for entry in disk_entries:
+        if entry not in shown:
+            merged.append(entry)
+            
+    for entry in model_entries:
+        if entry not in merged:
+            merged.append(entry)
+            
+    lines = disk_text.splitlines()
+    header = []
+    for line in lines:
+        header.append(line)
+        if "## Entries" in line:
+            break
+            
+    return "\n".join(header) + "\n" + "\n".join(merged)
 
 
 def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
@@ -378,11 +596,15 @@ def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
     file_sections = []
     remaining = POST_PROCESSING_CONTEXT_CHARS
     seen_files = set()
-    for fname in list(brain_activity.get("files_read", [])) + ["User", "Calendar"]:
+    files_read = list(brain_activity.get("files_read", []))
+    for fname in files_read + ["User", "Calendar"]:
         if fname in seen_files:
             continue
         seen_files.add(fname)
-        content = _read_brain_file(mode, fname)
+        if fname == "Calendar":
+            content = _read_filtered_calendar(mode, files_read)
+        else:
+            content = _read_brain_file(mode, fname)
         if content and remaining > 0:
             content = content[:remaining]
             remaining -= len(content)
@@ -412,13 +634,13 @@ def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
         with generation_lock:
             response_text = _generate_once(
                 prompt, max_tokens=3000,
-                on_token=storage_brain.append_stream)
+                on_token=storage_brain.append_stream, phase="post-processing")
     except Exception as e:
         print(f"Post-processing generation error: {e}")
         storage_brain.log_activity("error", f"Memory update failed: {e}")
         return
 
-    files_written, files_deleted = _execute_brain_commands(mode, response_text)
+    files_written, files_deleted = _execute_brain_commands(mode, response_text, files_read)
     if files_written or files_deleted:
         storage_brain.log_activity("status", "Memory updated.")
     else:
@@ -435,7 +657,37 @@ def _do_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
     storage_brain.rebuild_map(storage_brain.get_brain_dir(mode))
 
 
-def _execute_brain_commands(mode: str, response_text: str):
+def _norm_journal_text(s: str) -> str:
+    """Normalize a journal line for dedup: drop markdown, timestamps, case."""
+    s = re.sub(r"[*_`#\[\]]", "", s or "")
+    s = re.sub(r"\d{1,4}[-:]\d{2}[-:\d ]*", "", s)  # strip dates/times
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def _salvage_journal_write(mode: str, content: str) -> int:
+    """The model sometimes writes the journal as a node (CREATE/UPDATE
+    Journal.md) instead of using the JOURNAL command. Rather than drop it,
+    append any genuinely new log lines through the proper journal path, so they
+    land under today's date in the format the UI reads. Returns count appended.
+    """
+    jpath = storage_brain.get_brain_dir(mode) / "Journal.md"
+    existing_norm = _norm_journal_text(jpath.read_text(encoding="utf-8")) if jpath.exists() else ""
+    appended = 0
+    for line in content.splitlines():
+        m = re.match(r"^\s*[-*+]\s+(.*)$", line)  # bullet list lines only
+        if not m:
+            continue
+        text = re.sub(r"^\s*\[[^\]]*\]\s*", "", m.group(1)).strip()  # drop a leading [timestamp]
+        norm = _norm_journal_text(text)
+        if len(norm) < 4 or norm in existing_norm:  # boilerplate or already recorded
+            continue
+        storage_brain.append_journal(mode, text)
+        existing_norm += " " + norm  # also dedup repeats within this same write
+        appended += 1
+    return appended
+
+
+def _execute_brain_commands(mode: str, response_text: str, files_read: list = None):
     """Parse and execute the brain manager's CRUD commands.
 
     Returns (files_written, files_deleted). Invalid content (failing the
@@ -471,11 +723,24 @@ def _execute_brain_commands(mode: str, response_text: str):
                     files_written.append("Journal")
                 storage_brain.log_activity("journal", f"Edited journal entry for {arg}")
             elif action in ("CREATE", "UPDATE"):
-                # The Journal is append-only via the JOURNAL commands — never
-                # let a direct overwrite clobber its history.
-                if _stem(arg) == "Journal":
-                    storage_brain.log_activity("error", "Ignored a direct write to Journal (use JOURNAL).")
+                stem_arg = _stem(arg)
+                # The Journal is append-only via the JOURNAL command — never let a
+                # direct overwrite clobber its history. If the model mistakenly
+                # writes it as a node, salvage the new lines as proper appends.
+                if stem_arg == "Journal":
+                    n = _salvage_journal_write(mode, content)
+                    if n:
+                        if "Journal" not in files_written:
+                            files_written.append("Journal")
+                        storage_brain.log_activity(
+                            "journal", f"Added {n} journal entr{'y' if n == 1 else 'ies'}")
+                    else:
+                        storage_brain.log_activity("status", "Journal already up to date.")
                     continue
+                # The Calendar is filtered in the prompt, so a full overwrite would
+                # delete unseen entries. Merge model updates with hidden entries.
+                if stem_arg == "Calendar" and action == "UPDATE":
+                    content = _salvage_calendar_update(mode, content, files_read or [])
                 storage_brain.save_markdown_node(mode, arg, content)
                 files_written.append(arg)
                 verb = "Created" if action == "CREATE" else "Updated"
@@ -567,6 +832,12 @@ def parse_json_from_response(text: str):
 def _run_title_generation(cid: str):
     """Generates a title for the conversation and renames it if it deviates too much from the current title."""
     try:
+        import mlx.core as mx
+        for _ in range(5):
+            mx.new_stream(mx.gpu)
+    except ImportError:
+        pass
+    try:
         conv = database.get_conversation(cid)
         if not conv:
             return
@@ -576,6 +847,14 @@ def _run_title_generation(cid: str):
             return
 
         if not manager.is_loaded:
+            return
+
+        # A title generation is a full model generation; don't pay for it every
+        # turn. Run it on the first user turn (to replace the raw first-message
+        # placeholder title) and then every Nth turn, where the should_rename
+        # check below only renames on a clear topic shift.
+        user_msg_count = sum(1 for m in messages if m.get("role") == "user")
+        if user_msg_count != 1 and user_msg_count % TITLE_RECHECK_EVERY != 0:
             return
 
         # Format conversation history
@@ -612,7 +891,7 @@ def _run_title_generation(cid: str):
         )
 
         with generation_lock:
-            response_text = _generate_once(prompt, max_tokens=150)
+            response_text = _generate_once(prompt, max_tokens=150, phase="title")
 
         data = parse_json_from_response(response_text)
         if data and isinstance(data, dict):
@@ -632,7 +911,8 @@ def _run_title_generation(cid: str):
 
 async def _generate(request, cid, formatted, image_paths, audio_paths,
                     gen_kwargs, strip_thinking,
-                    brain_mode, brain_writes, brain_activity, user_text):
+                    brain_mode, brain_writes, brain_activity, user_text,
+                    memory_worthy):
     """Stream the model's reply, persist it, then start the brain update.
 
     When the chat template left a thinking block open, the model's first
@@ -644,12 +924,17 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
     engine = manager.engine
     thinking_open, thinking_tag = engine.prompt_open_thinking(formatted)
 
+    # Debug tap: show exactly what the chat model is fed (system prompt,
+    # history, media markers) and every raw token it produces (thinking + answer).
+    debug_tap.emit_prompt("chat", formatted)
+
     raw = ""        # everything the model produced (plus any tag we prepend)
     emitted = 0     # chars of the *visible* text already sent to the client
     if thinking_open:
         raw = thinking_tag
         yield thinking_tag
         emitted = len(raw)
+        debug_tap.emit("chat", "token", thinking_tag)
 
     await acquire_generation_lock()
     try:
@@ -657,6 +942,7 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
             formatted, image_paths or None, audio_paths or None, **gen_kwargs,
         ):
             raw += text
+            debug_tap.emit("chat", "token", text)
             if strip_thinking:
                 # Emit the cleaned answer incrementally, holding back the last
                 # few chars so a tag split across chunks ("</thi" | "nk>") is
@@ -678,6 +964,7 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
         # _generate_once for why this matters when memory is tight).
         engine.clear_cache()
         generation_lock.release()
+        debug_tap.emit("chat", "end")
 
     # Flush any held-back tail and settle the stored text.
     if strip_thinking:
@@ -696,14 +983,21 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
     # held open. (FastAPI's BackgroundTasks can't be used inside a streaming
     # generator — the generator IS the response.) The thread serializes its
     # generation through generation_lock. Skipped when the brain is paused
-    # (read-only mode), so memory is never mutated.
-    if brain_mode and brain_writes:
+    # (read-only mode), so memory is never mutated, and when routing judged the
+    # turn not worth remembering — that avoids a full write generation (and the
+    # brain processing spinner) on casual turns.
+    if brain_mode and brain_writes and _turn_is_memory_worthy(memory_worthy, clean):
         profile = config.active_profile.get()
         threading.Thread(
             target=_run_post_processing,
             args=(cid, msg_pos, brain_mode, user_text, clean, brain_activity, profile),
             daemon=True,
         ).start()
+    elif brain_mode and brain_writes:
+        # Surface the skip so the UI/logs show closure without spinning up the
+        # write pass.
+        print("[Brain] Skipping write pass — routing judged turn not memory-worthy.")
+        storage_brain.log_activity("status", "Nothing worth remembering from this turn.")
 
     # Update the conversation title if needed in a background thread so the response isn't held open
     try:

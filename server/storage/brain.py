@@ -105,6 +105,13 @@ def log_activity(etype: str, text: str):
     _notify_change("activity", get_activity())
 
 
+def push_routing(files):
+    """Broadcast the memory files routing has decided to read so far (live,
+    during phase 1), so the chat UI can reveal each tag as it's chosen. The
+    list is cumulative; send an empty list to clear it at the start of a turn."""
+    _notify_change("routing", {"files": list(files)})
+
+
 def append_stream(text: str):
     """Append generated tokens to the in-progress 'thoughts' buffer."""
     global _activity_stream
@@ -328,7 +335,7 @@ def parse_markdown_node(content: str) -> dict:
     body_for_title = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
     title_match = re.search(r"^#\s+(.+)$", body_for_title, re.MULTILINE)
     if title_match:
-        title = title_match.group(1).strip()
+        title = title_match.group(1).strip().replace("_", " ")
         post_title = body_for_title[title_match.end():].strip()
         desc_parts = re.split(r"\n\s*(?:#+\s|[-*+]\s|\d+\.\s)", post_title, maxsplit=1)
         description = desc_parts[0].strip() if desc_parts else ""

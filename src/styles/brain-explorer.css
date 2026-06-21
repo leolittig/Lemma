@@ -720,20 +720,10 @@ button.brain-editor-reset-btn:disabled {
    absolutely-positioned anchor; the spinner sits to the left of the button. */
 .brain-toolbar-cluster {
   position: absolute;
-  right: 4.5rem;
+  right: 6rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-/* Spinning arrow shown to the left of the Brain button while memory updates. */
-.brain-updating-spinner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #7c6fc4;
-  animation: brainSpin 0.8s linear infinite;
-  margin-right: -0.75rem;
 }
 
 button.brain-toggle-btn {
@@ -769,6 +759,21 @@ button.brain-toggle-btn:active {
 button.brain-toggle-btn.active {
   background: rgba(124, 111, 196, 0.12);
   color: #7c6fc4;
+}
+
+.brain-toggle-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  /* The graph-updating gif is a black graph on a white background; knock the
+     white out so it has no background box and no shadow behind it. */
+  filter: url(#make-white-transparent);
+  background: transparent;
+  box-shadow: none;
 }
 
 /* ── View tab bar (Graph · Calendar · Journal · Tasks · People · Assistant) ── */

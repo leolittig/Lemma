@@ -18,7 +18,7 @@ function fmtDay(iso) {
 function replaceMentionsWithTags(text) {
   if (!text) return '';
   return text.replace(/(?<![A-Za-z0-9_])@([A-Za-z0-9_]+)/g, (match, name) => {
-    return `<button class="brain-ref-chip" data-node="${name}">${name}</button>`;
+    return `<button class="brain-ref-chip" data-node="${name}">${name.replace(/_/g, ' ')}</button>`;
   });
 }
 

@@ -14,6 +14,7 @@ The Journal serves as an append-only registry of when the user said or shared so
    - Document key changes made to the brain (e.g., "Updated @Work node because...").
    - If something wasn't changed on the brain but is still important to keep track of, note it too.
    - The main purpose is to serve as a reliable registry of when the user told/said something.
+   - **Do NOT record trivial, test, diagnostic, or meta interactions** — e.g. the user typing "test", "hello", "are you working", or otherwise poking/checking the assistant or memory system. The act of testing the assistant is never journal-worthy. When a turn carries no real personal information, output nothing at all.
 
 3. **Writing Entries**:
    - Append a short note using the **JOURNAL** command (it lands under today's date automatically):
