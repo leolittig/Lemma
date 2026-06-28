@@ -100,6 +100,12 @@ class MlxEngine(Engine):
                     enable_thinking: Optional[bool] = None):
         extra = {} if enable_thinking is None else {"enable_thinking": enable_thinking}
         seq = [{"role": "system", "content": system_prompt}] if system_prompt else []
+        # Identity priming: a short assistant turn that makes the model
+        # "remember" it already accepted the Lemma persona.  This beats
+        # the strong built-in identity prior of some base models (e.g. Gemma).
+        if system_prompt and "Lemma" in system_prompt:
+            seq.append({"role": "user", "content": "Understood. Who are you?"})
+            seq.append({"role": "assistant", "content": "I'm Lemma, your personal assistant. How can I help you?"})
         seq += [{"role": m["role"], "content": m["text"]} for m in messages]
         return apply_chat_template(
             self._processor, self._model.config, seq,

@@ -421,6 +421,22 @@ async def reset_brain(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/profiles")
+async def list_profiles():
+    """Profiles that actually exist on disk (each is a folder under profiles/
+    with a brain). Lets the frontend surface profiles created outside the UI —
+    e.g. a demo brain built via the API — in the profile switcher."""
+    from .. import config
+
+    profiles_dir = config.PROJECT_ROOT / "profiles"
+    found = []
+    if profiles_dir.exists():
+        for d in sorted(profiles_dir.iterdir()):
+            if d.is_dir() and (d / "brain").exists():
+                found.append({"id": d.name, "name": d.name})
+    return {"profiles": found}
+
+
 @router.delete("/api/profile/{profile_name}")
 async def delete_profile(profile_name: str):
     import re

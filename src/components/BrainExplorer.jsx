@@ -218,8 +218,21 @@ function initSimulation(graphData, nodeSizeMult = 1.2, edgeLength = 270) {
       const share = (subtreeSize[childId] / totalSize) * angularSpan;
       const childAngle = currentAngle + share / 2;
       const parentPos = pos[nodeId];
+      
       const baseLen = depthVal === 1 ? edgeLength * 1.45 : 110;
-      const len = baseLen + (depthVal > 1 && sortedChildren.length > 3 ? (idx % 2) * 20 : 0);
+      let len = baseLen;
+      if (depthVal > 1) {
+        // Dynamically scale branch length to prevent arc crowding if there are many siblings
+        const minArcSpacing = 75; // Comfortable spacing in pixels
+        const requiredLen = (minArcSpacing * sortedChildren.length) / angularSpan;
+        if (requiredLen > len) {
+          len = requiredLen;
+        }
+        // Stagger lengths across 3 levels to prevent label collisions
+        if (sortedChildren.length > 2) {
+          len += (idx % 3) * 35;
+        }
+      }
 
       pos[childId] = {
         x: parentPos.x + Math.cos(childAngle) * len,
@@ -352,8 +365,176 @@ function tick(nodes, links, draggedNode) {
 }
 
 function settle(s) {
-  // Static layout doesn't need physics settling
+  const { nodes, links } = s;
+  if (!nodes || nodes.length === 0) return s;
+
+  // Store original positions for smooth animation interpolation
+  nodes.forEach(n => {
+    n.origX = n.x;
+    n.origY = n.y;
+  });
+
+  const iterations = 150;
+  const rootNode = nodes.find(n => n.isRoot);
+
+  for (let step = 0; step < iterations; step++) {
+    // Cooling temperature schedule
+    const alpha = Math.pow(0.96, step);
+
+    // 1. Gravity pull back to original target layout coordinates
+    // This preserves the radial hierarchy sectors and angles
+    const gravityStrength = 0.06 * alpha;
+    nodes.forEach(n => {
+      if (!n.isRoot) {
+        n.x += (n.targetX - n.x) * gravityStrength;
+        n.y += (n.targetY - n.y) * gravityStrength;
+      }
+    });
+
+    // 2. Node-node repulsion to resolve overlaps
+    for (let i = 0; i < nodes.length; i++) {
+      const n1 = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const n2 = nodes[j];
+        const dx = n2.x - n1.x;
+        const dy = n2.y - n1.y;
+        const dist = Math.hypot(dx, dy) || 0.1;
+        
+        // Node labels are rendered below the nodes. 
+        // We require a comfortable margin (75px) to prevent label overlaps.
+        const padding = (n1.isRoot || n2.isRoot) ? 100 : 75;
+        const minDist = n1.radius + n2.radius + padding;
+
+        if (dist < minDist) {
+          const overlap = minDist - dist;
+          // Apply a repulsion force proportional to overlap
+          const force = (overlap / dist) * 0.5 * alpha;
+          const pushX = dx * force;
+          const pushY = dy * force;
+
+          if (!n1.isRoot) {
+            n1.x -= pushX;
+            n1.y -= pushY;
+          }
+          if (!n2.isRoot) {
+            n2.x += pushX;
+            n2.y += pushY;
+          }
+        }
+      }
+    }
+
+    // 3. Link constraints (keep tree-linked children reasonably near their parent)
+    links.forEach(l => {
+      const source = l.source;
+      const target = l.target;
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const dist = Math.hypot(dx, dy) || 0.1;
+      
+      const naturalDist = Math.hypot(target.targetX - source.targetX, target.targetY - source.targetY) || 110;
+      const diff = dist - naturalDist;
+      // Pull nodes back to their natural length if they drifted too far
+      const force = (diff / dist) * 0.1 * alpha;
+      const pullX = dx * force;
+      const pullY = dy * force;
+
+      if (!target.isRoot) {
+        target.x -= pullX;
+        target.y -= pullY;
+      }
+      if (!source.isRoot) {
+        source.x += pullX;
+        source.y += pullY;
+      }
+    });
+
+    // 4. Pin root node to center
+    if (rootNode) {
+      rootNode.x = 0;
+      rootNode.y = 0;
+    }
+  }
+
+  // Update target coordinates to relaxed non-overlapping positions
+  nodes.forEach(n => {
+    n.targetX = n.x;
+    n.targetY = n.y;
+    // Restore original positions so they animate smoothly in real-time tick loop
+    n.x = n.origX;
+    n.y = n.origY;
+    delete n.origX;
+    delete n.origY;
+  });
+
   return s;
+}
+
+function getSquigglyPath(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 20) return `M ${x1} ${y1} L ${x2} ${y2}`;
+
+  const ux = dx / dist;
+  const uy = dy / dist;
+  const nx = -uy;
+  const ny = ux;
+
+  // Calculate wave frequency and amplitude dynamically based on distance
+  const numWaves = Math.max(4, Math.min(15, Math.floor(dist / 22)));
+  const amplitude = Math.max(3, Math.min(7, dist * 0.03));
+
+  const steps = Math.ceil(dist / 2.5);
+  let path = `M ${x1} ${y1}`;
+
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    
+    // Smooth envelope so amplitude is 0 at both endpoints
+    const envelope = Math.sin(t * Math.PI);
+    const wave = Math.sin(t * Math.PI * 2 * numWaves) * amplitude * envelope;
+    
+    const x = px + nx * wave;
+    const y = py + ny * wave;
+    path += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+
+  return path;
+}
+
+function getActiveNodeIds(selectedId, nodes) {
+  const active = new Set();
+  if (!selectedId || !nodes) return active;
+
+  const selectedNode = nodes.find(n => n.id === selectedId);
+  if (!selectedNode) return active;
+
+  // 1. Upstream (Ancestors)
+  let curr = selectedNode;
+  while (curr) {
+    active.add(curr.id);
+    if (curr.isRoot || !curr.cluster) {
+      break;
+    }
+    curr = nodes.find(n => n.id === curr.cluster);
+  }
+
+  // 2. Downstream (Descendants)
+  const queue = [selectedId];
+  while (queue.length > 0) {
+    const parentId = queue.shift();
+    active.add(parentId);
+    nodes.forEach(n => {
+      if (n.cluster === parentId && !active.has(n.id)) {
+        queue.push(n.id);
+      }
+    });
+  }
+
+  return active;
 }
 
 // Render a customized Lucide icon inside the node, falling back to a clean default based on type.
@@ -937,7 +1118,6 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
         {closeButton}
         {tabBar}
         <div className="brain-explorer-body">{pane}</div>
-        {activityLog}
       </div>
     );
   }
@@ -954,7 +1134,18 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
   }
   if (!sim) return null;
 
-  const { nodes, links, legend } = sim;
+  const { nodes, links, legend, crossLinks } = sim;
+  const activeNodeIds = getActiveNodeIds(selected?.id, nodes);
+  if (selected) {
+    const selId = selected.id;
+    (crossLinks || []).forEach(l => {
+      if (l.source.id === selId) {
+        activeNodeIds.add(l.target.id);
+      } else if (l.target.id === selId) {
+        activeNodeIds.add(l.source.id);
+      }
+    });
+  }
   const pan = panRef.current;
   const svgWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const svgHeight = typeof window !== 'undefined' ? window.innerHeight - 60 : 800;
@@ -1003,52 +1194,77 @@ export default function BrainExplorer({ brainMode, activity, detailedLogs, onClo
           </defs>
           <rect className="brain-bg-rect" width="100%" height="100%" fill="#fafafc" />
           <g transform={`translate(${cx}, ${cy}) scale(${pan.zoom})`}>
-            {links.map((l, i) => (
-              <line key={i} x1={l.source.x} y1={l.source.y} x2={l.target.x} y2={l.target.y}
-                stroke={(l.target.color && l.target.depth > 1) ? l.target.color : 'rgba(0,0,0,0.12)'}
-                strokeOpacity={l.target.depth > 1 ? 0.35 : 1} strokeWidth={1.5} />
-            ))}
-            {(sim.crossLinks || []).map((l, i) => {
-              const isHovered = hoveredNodeId && (l.source.id === hoveredNodeId || l.target.id === hoveredNodeId);
-              const isOutgoing = l.source.id === hoveredNodeId;
+            {links.map((l, i) => {
+              const isLinkActive = selected ? (activeNodeIds.has(l.source.id) && activeNodeIds.has(l.target.id)) : true;
+              const linkOpacity = isLinkActive ? 1.0 : 0.15;
               return (
-                <line
-                  key={`cross-${i}`}
-                  x1={l.source.x}
-                  y1={l.source.y}
-                  x2={l.target.x}
-                  y2={l.target.y}
-                  className={`brain-graph-cross-link ${isHovered ? 'hovered' : ''} ${isHovered ? (isOutgoing ? 'outgoing' : 'incoming') : ''}`}
+                <line key={i} x1={l.source.x} y1={l.source.y} x2={l.target.x} y2={l.target.y}
+                  stroke={(l.target.color && l.target.depth > 1) ? l.target.color : 'rgba(0,0,0,0.12)'}
+                  strokeOpacity={l.target.depth > 1 ? 0.65 * linkOpacity : 1 * linkOpacity}
+                  strokeWidth={1.5}
+                  style={{ transition: 'stroke-opacity 0.25s ease' }}
                 />
               );
             })}
-            {nodes.map((n) => (
-              <g
-                key={n.id}
-                className={`brain-node-group ${selected?.id === n.id ? 'selected' : ''} ${hoveredNodeId === n.id ? 'hovered' : ''}`}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredNodeId(n.id)}
-                onMouseLeave={() => setHoveredNodeId(null)}
-              >
-                <circle cx={n.x} cy={n.y} r={n.radius + 4} fill={n.color} opacity={0.15} filter="url(#node-glow)" />
-                <circle
-                  cx={n.x} cy={n.y} r={n.radius}
-                  fill={n.color}
-                  stroke={selected?.id === n.id ? '#1e293b' : 'rgba(255,255,255,0.85)'}
-                  strokeWidth={selected?.id === n.id ? 3 : 2}
-                  onMouseDown={(e) => handleMouseDown(e, n)}
-                  onClick={() => handleNodeClick(n)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <g transform={`translate(${n.x}, ${n.y})`} style={{ pointerEvents: 'none' }}>
-                  <NodeIcon name={n.icon} type={n.type} size={n.radius * 1.1} />
-                </g>
+            {(sim.crossLinks || []).map((l, i) => {
+              const isHovered = hoveredNodeId && (l.source.id === hoveredNodeId || l.target.id === hoveredNodeId);
+              const isOutgoing = l.source.id === hoveredNodeId;
+              const isLinkActive = selected ? (activeNodeIds.has(l.source.id) && activeNodeIds.has(l.target.id)) : true;
+              
+              let opacityVal = 0.35;
+              if (selected) {
+                const isDirect = l.source.id === selected.id || l.target.id === selected.id;
+                if (isDirect) {
+                  opacityVal = 0.95;
+                } else if (!isLinkActive) {
+                  opacityVal = 0.08;
+                }
+              }
 
-                <text x={n.x} y={n.y + n.radius + 14} textAnchor="middle" fill="rgba(30,41,59,0.9)" fontSize="11" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="600" style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                  {n.label}
-                </text>
-              </g>
-            ))}
+              return (
+                <path
+                  key={`cross-${i}`}
+                  d={getSquigglyPath(l.source.x, l.source.y, l.target.x, l.target.y)}
+                  className={`brain-graph-cross-link ${isHovered ? 'hovered' : ''} ${isHovered ? (isOutgoing ? 'outgoing' : 'incoming') : ''}`}
+                  fill="none"
+                  style={{
+                    strokeOpacity: opacityVal,
+                    transition: 'stroke-opacity 0.25s ease, stroke-width 0.25s ease'
+                  }}
+                />
+              );
+            })}
+            {nodes.map((n) => {
+              const isNodeActive = selected ? activeNodeIds.has(n.id) : true;
+              const nodeOpacity = isNodeActive ? 1.0 : 0.2;
+              return (
+                <g
+                  key={n.id}
+                  className={`brain-node-group ${selected?.id === n.id ? 'selected' : ''} ${hoveredNodeId === n.id ? 'hovered' : ''}`}
+                  style={{ cursor: 'pointer', opacity: nodeOpacity, transition: 'opacity 0.25s ease' }}
+                  onMouseEnter={() => setHoveredNodeId(n.id)}
+                  onMouseLeave={() => setHoveredNodeId(null)}
+                >
+                  <circle cx={n.x} cy={n.y} r={n.radius + 4} fill={n.color} opacity={0.15} filter="url(#node-glow)" />
+                  <circle
+                    cx={n.x} cy={n.y} r={n.radius}
+                    fill={n.color}
+                    stroke={selected?.id === n.id ? '#1e293b' : 'rgba(255,255,255,0.85)'}
+                    strokeWidth={selected?.id === n.id ? 3 : 2}
+                    onMouseDown={(e) => handleMouseDown(e, n)}
+                    onClick={() => handleNodeClick(n)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <g transform={`translate(${n.x}, ${n.y})`} style={{ pointerEvents: 'none' }}>
+                    <NodeIcon name={n.icon} type={n.type} size={n.radius * 1.1} />
+                  </g>
+
+                  <text x={n.x} y={n.y + n.radius + 14} textAnchor="middle" fill="rgba(30,41,59,0.9)" fontSize="11" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="600" style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                    {n.label}
+                  </text>
+                </g>
+              );
+            })}
           </g>
         </svg>
 

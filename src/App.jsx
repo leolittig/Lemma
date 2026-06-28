@@ -97,6 +97,27 @@ export default function App() {
 
   const activeProfileObj = profiles.find(p => p.id === activeProfile) || { id: activeProfile, name: activeProfile };
 
+  // Merge in any profiles that exist on the backend but aren't in this browser's
+  // list yet (e.g. a demo brain created via the API), so they show in the
+  // switcher without manual setup.
+  useEffect(() => {
+    let cancelled = false;
+    api.fetchProfiles().then(({ profiles: backendProfiles }) => {
+      if (cancelled || !Array.isArray(backendProfiles)) return;
+      setProfiles((prev) => {
+        const known = new Set(prev.map((p) => p.id));
+        const additions = backendProfiles
+          .filter((bp) => bp.id && bp.id !== 'default' && !known.has(bp.id))
+          .map((bp) => ({ id: bp.id, name: bp.name || bp.id, customNamed: true }));
+        if (additions.length === 0) return prev;
+        const merged = [...prev, ...additions];
+        localStorage.setItem('profiles_list', JSON.stringify(merged));
+        return merged;
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const switchProfile = (profileId) => {
     localStorage.setItem('active_profile', profileId);
     window.location.reload();

@@ -272,6 +272,14 @@ export async function deleteProfile(profileName) {
   return res.json();
 }
 
+// Profiles that exist on the backend (folders under profiles/ with a brain),
+// so the switcher can show ones created outside this browser (e.g. a demo brain).
+export async function fetchProfiles() {
+  const res = await fetch('/api/profiles');
+  if (!res.ok) throw new Error('Failed to list profiles');
+  return res.json(); // { profiles: [{ id, name }] }
+}
+
 export async function editCalendarEvent(mode, ts, text, newText) {
   const res = await postJSON(`/api/brain/calendar/edit?mode=${encodeURIComponent(mode)}`, {
     ts,
@@ -304,4 +312,3 @@ export async function deleteCalendarEvent(mode, ts, text) {
   }
   return res.json();
 }
-
