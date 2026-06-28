@@ -168,7 +168,6 @@ export default function Sidebar({
           </div>
         ))}
       </div>
-      <div className="sidebar-fade" aria-hidden="true" />
 
       <div className="sidebar-footer" ref={profileMenuRef}>
         <button

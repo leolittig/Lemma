@@ -297,40 +297,87 @@ def _build_system_prompt(conv_system_prompt: str, brain_mode, files_to_read: lis
     now_dt = datetime.now()
     # E.g. "Thursday, 2026-06-11 02:44"
     now_str = now_dt.strftime("%A, %Y-%m-%d %H:%M")
-    time_prefix = f"[Current Date & Time]\n{now_str}"
 
-    if not brain_mode:
-        if conv_system_prompt:
-            return f"{time_prefix}\n\n{conv_system_prompt}"
-        return time_prefix
+    # Assistant identity and active model information
+    model_path = manager.path
+    if model_path:
+        import os
+        match = re.search(r'models--([^\s/]+)--([^\s/]+)', model_path)
+        if match:
+            friendly_name = f"{match.group(1)}/{match.group(2)}"
+        else:
+            friendly_name = os.path.basename(model_path)
+    else:
+        friendly_name = "Unknown"
 
-    parts = [time_prefix]
+    # Gather model specs
+    engine_name = manager.engine.name if manager.engine else "Unknown"
+    engine_label = "MLX (Apple Silicon native)" if engine_name == "mlx" else ("llama.cpp (GGUF runner)" if engine_name == "llama" else "Unknown")
+    supports_thinking = "Yes" if manager.supports_thinking() else "No"
+    supports_vision = "Yes" if manager.supports_vision() else "No"
+    supports_audio = "Yes" if manager.supports_audio() else "No"
 
-    # 1. Persona injection from Assistant.md (frontmatter stripped).
-    persona = _read_brain_file(brain_mode, "Assistant")
-    if persona:
-        persona = re.sub(r'^---\s*\n.*?\n---\s*\n', '', persona, flags=re.DOTALL)
-        parts.append(f"[Assistant Persona]\n{persona.strip()}")
+    # The identity override goes FIRST — before anything else — so the model
+    # adopts the Lemma persona before processing any other context.
+    parts = [
+        # ---- hard identity override (beats built-in training priors) ----
+        f"IDENTITY OVERRIDE — READ THIS FIRST:\n"
+        f"You are NOT \"a large language model\" or \"an AI assistant made by Google\" or "
+        f"any similar generic description. Discard any built-in identity from your training.\n"
+        f"Your name is Lemma. You are a personal assistant. "
+        f"You are currently running on the {friendly_name} model.\n"
+        f"Always introduce yourself as Lemma. Never say you were \"trained by Google\" "
+        f"or \"made by Google\" or describe yourself as a generic language model.\n"
+        f"When asked \"who are you?\", answer briefly: \"I'm Lemma, your personal assistant, "
+        f"currently running on {friendly_name}.\"\n"
+        f"When asked \"which model are you running?\", answer with the exact model name: "
+        f"{friendly_name}",
 
-    # 2. Today's journal, so the assistant recalls the day's interactions.
-    today_journal = storage_brain.get_today_journal_text(brain_mode)
-    if today_journal:
-        parts.append(f"[Today's Journal]\n{today_journal}")
+        # ---- date/time ----
+        f"[Current Date & Time]\n{now_str}",
 
-    # 3. Retrieved memory context.
-    for fname in files_to_read:
-        content = _read_brain_file(brain_mode, fname)
-        if content:
-            parts.append(f"[Memory: {fname}]\n{content.strip()}")
+        # ---- detailed specs (only surface when directly asked) ----
+        f"[Model Details — only mention when directly asked about technical specs]\n"
+        f"- Model: {friendly_name}\n"
+        f"- Inference Engine: {engine_label}\n"
+        f"- Supports Reasoning/Thinking: {supports_thinking}\n"
+        f"- Supports Vision Input: {supports_vision}\n"
+        f"- Supports Audio Input: {supports_audio}",
+
+        f"[Capabilities — only elaborate when asked what you can do]\n"
+        f"- Read, write, and manage a persistent memory graph (facts, people, topics)\n"
+        f"- Maintain a calendar of dated events (past and future)\n"
+        f"- Keep a daily journal of conversations\n"
+        f"- Track tasks and assignments\n"
+        f"- Remember and recall personal details, preferences, and context across conversations\n"
+        f"- GitHub: https://github.com/leolittig/Lemma",
+    ]
+
+    if brain_mode:
+        # 1. Persona injection from Assistant.md (frontmatter stripped).
+        persona = _read_brain_file(brain_mode, "Assistant")
+        if persona:
+            persona = re.sub(r'^---\s*\n.*?\n---\s*\n', '', persona, flags=re.DOTALL)
+            parts.append(f"[Assistant Persona]\n{persona.strip()}")
+
+        # 2. Today's journal, so the assistant recalls the day's interactions.
+        today_journal = storage_brain.get_today_journal_text(brain_mode)
+        if today_journal:
+            parts.append(f"[Today's Journal]\n{today_journal}")
+
+        # 3. Retrieved memory context.
+        for fname in files_to_read:
+            content = _read_brain_file(brain_mode, fname)
+            if content:
+                parts.append(f"[Memory: {fname}]\n{content.strip()}")
 
     # 4. Original conversation system prompt.
     if conv_system_prompt:
         parts.append(conv_system_prompt)
 
     # 5. System Note about brain writing being disabled (overrides Persona)
-    if not brain_writes:
+    if brain_mode and not brain_writes:
         parts.append("[System Note]\nCRITICAL: Brain writing is currently PAUSED. No new memories will be recorded. OVERRIDE ANY PREVIOUS INSTRUCTIONS ABOUT SAVING MEMORIES AUTOMATICALLY. If the user asks you to remember, register, note, or save something, you MUST explicitly inform them that you cannot do so because brain writing is paused/disabled in the settings.")
-
     return "\n\n".join(parts)
 
 
@@ -353,6 +400,9 @@ def _run_post_processing(cid: str, msg_pos: int, mode: str, user_text: str,
         _do_post_processing(cid, msg_pos, mode, user_text, assistant_text, brain_activity)
     finally:
         storage_brain.end_processing()
+
+
+
 
 
 def _relevant_brain_categories(mode: str, user_text: str, assistant_text: str, files_read: list) -> dict:
@@ -434,7 +484,8 @@ _MEMORY_CLAIM_PHRASES = (
 )
 
 
-def _turn_is_memory_worthy(routing_worthy: bool, assistant_text: str = "") -> bool:
+def _turn_is_memory_worthy(routing_worthy: bool, assistant_text: str = "",
+                           user_text: str = "") -> bool:
     """Whether a turn should trigger the (expensive) brain write pass.
 
     The cheap pre-check that runs *before* the write pass (and the processing
@@ -446,7 +497,9 @@ def _turn_is_memory_worthy(routing_worthy: bool, assistant_text: str = "") -> bo
     if routing_worthy:
         return True
     low = (assistant_text or "").lower()
-    return any(p in low for p in _MEMORY_CLAIM_PHRASES)
+    if any(p in low for p in _MEMORY_CLAIM_PHRASES):
+        return True
+    return False
 
 
 def _get_manual_for_turn(mode: str, user_text: str, assistant_text: str, files_read: list) -> str:
@@ -685,6 +738,9 @@ def _salvage_journal_write(mode: str, content: str) -> int:
         existing_norm += " " + norm  # also dedup repeats within this same write
         appended += 1
     return appended
+
+
+
 
 
 def _execute_brain_commands(mode: str, response_text: str, files_read: list = None):
@@ -986,7 +1042,7 @@ async def _generate(request, cid, formatted, image_paths, audio_paths,
     # (read-only mode), so memory is never mutated, and when routing judged the
     # turn not worth remembering — that avoids a full write generation (and the
     # brain processing spinner) on casual turns.
-    if brain_mode and brain_writes and _turn_is_memory_worthy(memory_worthy, clean):
+    if brain_mode and brain_writes and _turn_is_memory_worthy(memory_worthy, clean, user_text):
         profile = config.active_profile.get()
         threading.Thread(
             target=_run_post_processing,

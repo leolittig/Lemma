@@ -746,7 +746,7 @@ button.brain-toggle-btn {
 }
 
 button.brain-toggle-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: transparent;
   color: #1e293b;
   border-color: rgba(0, 0, 0, 0.15);
   transform: none;
@@ -757,7 +757,7 @@ button.brain-toggle-btn:active {
 }
 
 button.brain-toggle-btn.active {
-  background: rgba(124, 111, 196, 0.12);
+  background: transparent;
   color: #7c6fc4;
 }
 

@@ -118,6 +118,10 @@ class LlamaEngine(Engine):
         as data URIs on the last user turn (llama.cpp applies the GGUF's own
         chat template internally)."""
         seq = [{"role": "system", "content": system_prompt}] if system_prompt else []
+        # Identity priming: see mlx_engine.py for rationale.
+        if system_prompt and "Lemma" in system_prompt:
+            seq.append({"role": "user", "content": "Understood. Who are you?"})
+            seq.append({"role": "assistant", "content": "I'm Lemma, your personal assistant. How can I help you?"})
         for m in messages:
             seq.append({"role": m["role"], "content": m["text"] or ""})
 
